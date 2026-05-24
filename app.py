@@ -1,266 +1,246 @@
 import streamlit as st
-import plotly.graph_objects as go
-import pandas as pd
-import time
-
-from utils.data_loader import load_data
-from utils.indicators import add_indicators
-from utils.predictor import train_model
-from utils.chatbot import ask_bot
-from utils.wallet import add_money
 
 st.set_page_config(
-    page_title="AI Trading Dashboard",
-    layout="wide"
+    page_title="AI Trading Platform",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# ---------------- SESSION STATE ---------------- #
+# ---------------- SESSION ---------------- #
 
 if "wallet" not in st.session_state:
     st.session_state.wallet = 500
 
-if "transactions" not in st.session_state:
-    st.session_state.transactions = []
+if "demo_wallet" not in st.session_state:
+    st.session_state.demo_wallet = 500
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ---------------- CUSTOM CSS ---------------- #
 
-# ---------------- HEADER ---------------- #
+st.markdown("""
+<style>
 
-st.title("📈 AI Trading Dashboard")
+.main {
+    background-color: #0e1117;
+    color: white;
+}
 
-# ---------------- WALLET ---------------- #
+.hero {
+    padding: 40px;
+    border-radius: 20px;
+    background: linear-gradient(
+        135deg,
+        #111827,
+        #1f2937
+    );
+    margin-bottom: 30px;
+}
 
-col1, col2 = st.columns([8, 2])
+.feature-card {
+    padding: 25px;
+    border-radius: 20px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    transition: 0.3s;
+}
+
+.feature-card:hover {
+    transform: scale(1.02);
+}
+
+.wallet-box {
+    background: #161b22;
+    padding: 20px;
+    border-radius: 20px;
+    text-align: center;
+    border: 1px solid #30363d;
+}
+
+.stButton button {
+    width: 100%;
+    border-radius: 12px;
+    background: #00c896;
+    color: white;
+    border: none;
+    padding: 12px;
+    font-weight: bold;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- HERO SECTION ---------------- #
+
+st.markdown("""
+<div class="hero">
+
+<h1>🚀 AI Trading Platform</h1>
+
+<p>
+Advanced AI-powered trading platform with:
+</p>
+
+<ul>
+<li>📈 Real-Time Market Charts</li>
+<li>🤖 AI Predictions</li>
+<li>💹 Persistent Trading Portfolio</li>
+<li>📊 Live Profit/Loss Tracking</li>
+<li>🇮🇳 Indian + US Stocks</li>
+<li>🧪 Demo Trading System</li>
+<li>💬 AI Trading Chatbot</li>
+</ul>
+
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------- WALLET DISPLAY ---------------- #
+
+col1, col2 = st.columns(2)
+
+with col1:
+
+    st.markdown(f"""
+    <div class="wallet-box">
+        <h2>💰 Main Wallet</h2>
+        <h1>${round(st.session_state.wallet,2)}</h1>
+    </div>
+    """, unsafe_allow_html=True)
 
 with col2:
 
-    st.metric(
-        "Wallet Balance",
-        f"${round(st.session_state.wallet,2)} +"
+    st.markdown(f"""
+    <div class="wallet-box">
+        <h2>🧪 Demo Wallet</h2>
+        <h1>${round(st.session_state.demo_wallet,2)}</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ---------------- FEATURES ---------------- #
+
+st.subheader("🔥 Platform Features")
+
+f1, f2, f3 = st.columns(3)
+
+with f1:
+
+    st.markdown("""
+    <div class="feature-card">
+        <h3>📈 Real-Time Trading</h3>
+        <p>
+        Track live stock prices with dynamic
+        charts and technical indicators.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with f2:
+
+    st.markdown("""
+    <div class="feature-card">
+        <h3>🤖 AI Predictions</h3>
+        <p>
+        AI-based stock prediction system using
+        machine learning and LSTM models.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with f3:
+
+    st.markdown("""
+    <div class="feature-card">
+        <h3>💬 AI Trading Chatbot</h3>
+        <p>
+        Ask trading and investment questions
+        with real-time AI assistance.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ---------------- STOCKS ---------------- #
+
+st.subheader("📊 Available Stocks")
+
+stocks = [
+    "Apple (AAPL)",
+    "Tesla (TSLA)",
+    "Microsoft (MSFT)",
+    "Google (GOOGL)",
+    "NVIDIA (NVDA)",
+    "Bitcoin (BTC-USD)",
+    "Reliance Industries",
+    "HDFC Bank",
+    "ICICI Bank",
+    "Bharti Airtel"
+]
+
+st.write(stocks)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ---------------- NAVIGATION ---------------- #
+
+st.subheader("🚀 Start Trading")
+
+c1, c2 = st.columns(2)
+
+with c1:
+
+    st.page_link(
+        "pages/trading.py",
+        label="📈 Open Trading Dashboard",
+        icon="📈"
     )
 
-    with st.expander("➕ Add Money"):
+with c2:
 
-        amount = st.number_input(
-            "Enter Amount",
-            min_value=1,
-            step=1
-        )
-
-        if st.button("Add Funds"):
-
-            add_money(amount)
-
-            st.success("Money Added Successfully")
-
-# ---------------- STOCK SELECT ---------------- #
-
-symbol = st.selectbox(
-    "Select Asset",
-    [
-        "AAPL",
-        "TSLA",
-        "MSFT",
-        "GOOGL",
-        "NVDA",
-        "BTC-USD"
-    ]
-)
-
-# ---------------- LOAD DATA ---------------- #
-
-df = load_data(symbol)
-
-df = add_indicators(df)
-
-# ---------------- LIVE PRICE ---------------- #
-
-current_price = float(df["Close"].iloc[-1])
-
-previous_price = float(df["Close"].iloc[-2])
-
-price_change = current_price - previous_price
-
-price_percent = (price_change / previous_price) * 100
-
-# ---------------- METRICS ---------------- #
-
-m1, m2, m3 = st.columns(3)
-
-with m1:
-    st.metric(
-        "Current Price",
-        f"${round(current_price,2)}",
-        f"{round(price_percent,2)}%"
+    st.page_link(
+        "pages/demo.py",
+        label="🧪 Open Demo Trading",
+        icon="🧪"
     )
 
-with m2:
-    st.metric(
-        "RSI",
-        round(df["RSI"].iloc[-1], 2)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ---------------- REFERENCES ---------------- #
+
+st.subheader("🌐 Market References")
+
+r1, r2, r3 = st.columns(3)
+
+with r1:
+
+    st.link_button(
+        "Yahoo Finance",
+        "https://finance.yahoo.com"
     )
 
-with m3:
-    st.metric(
-        "MACD",
-        round(df["MACD"].iloc[-1], 2)
+with r2:
+
+    st.link_button(
+        "TradingView",
+        "https://www.tradingview.com"
     )
 
-# ---------------- CHART ---------------- #
+with r3:
 
-fig = go.Figure()
-
-fig.add_trace(
-    go.Scatter(
-        x=df["Date"],
-        y=df["Close"],
-        mode="lines",
-        name="Price",
-        line=dict(width=3)
+    st.link_button(
+        "MoneyControl",
+        "https://www.moneycontrol.com"
     )
-)
 
-fig.update_layout(
-    template="plotly_dark",
-    height=600,
-    title=f"{symbol} Real-Time Market Chart",
-    xaxis_title="Date",
-    yaxis_title="Price"
-)
+# ---------------- FOOTER ---------------- #
 
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
+st.markdown("<br><br>", unsafe_allow_html=True)
 
-# ---------------- BUY SECTION ---------------- #
+st.markdown("""
+<center>
 
-st.subheader("💹 Buy Stocks")
+Made with ❤️ using Streamlit + AI/ML
 
-investment_amount = st.number_input(
-    "Investment Amount ($)",
-    min_value=1,
-    max_value=int(st.session_state.wallet),
-    step=1
-)
-
-if st.button("Buy Now"):
-
-    quantity = investment_amount / current_price
-
-    st.session_state.wallet -= investment_amount
-
-    st.session_state.transactions.append({
-        "Asset": symbol,
-        "Buy Price": current_price,
-        "Current Price": current_price,
-        "Investment": investment_amount,
-        "Quantity": quantity,
-        "Profit/Loss %": 0
-    })
-
-    st.success("Stock Purchased Successfully")
-
-# ---------------- LIVE PORTFOLIO ---------------- #
-
-st.subheader("📊 Live Portfolio")
-
-updated_transactions = []
-
-total_profit_loss = 0
-
-for trade in st.session_state.transactions:
-
-    latest_df = load_data(trade["Asset"])
-
-    latest_price = float(latest_df["Close"].iloc[-1])
-
-    pnl_percent = (
-        (latest_price - trade["Buy Price"])
-        / trade["Buy Price"]
-    ) * 100
-
-    current_value = trade["Quantity"] * latest_price
-
-    profit_loss_amount = current_value - trade["Investment"]
-
-    total_profit_loss += profit_loss_amount
-
-    updated_transactions.append({
-        "Asset": trade["Asset"],
-        "Buy Price": round(trade["Buy Price"], 2),
-        "Current Price": round(latest_price, 2),
-        "Investment": round(trade["Investment"], 2),
-        "Current Value": round(current_value, 2),
-        "Profit/Loss %": round(pnl_percent, 2)
-    })
-
-portfolio_df = pd.DataFrame(updated_transactions)
-
-st.dataframe(
-    portfolio_df,
-    use_container_width=True
-)
-
-# ---------------- TOTAL PROFIT LOSS ---------------- #
-
-st.metric(
-    "Total Portfolio Profit/Loss",
-    f"${round(total_profit_loss,2)}"
-)
-
-# ---------------- AI PREDICTION ---------------- #
-
-st.subheader("🤖 AI Prediction")
-
-model, scaled_data = train_model(df)
-
-predicted_price = current_price * 1.02
-
-prediction_percent = (
-    (predicted_price - current_price)
-    / current_price
-) * 100
-
-st.metric(
-    "Predicted Next Price",
-    f"${round(predicted_price,2)}",
-    f"{round(prediction_percent,2)}%"
-)
-
-# ---------------- CHATBOT ---------------- #
-
-st.subheader("💬 AI Trading Chatbot")
-
-user_input = st.chat_input(
-    "Ask trading-related questions..."
-)
-
-if user_input:
-
-    st.session_state.messages.append({
-        "role": "user",
-        "content": user_input
-    })
-
-    response = ask_bot(user_input)
-
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": response
-    })
-
-# ---------------- DISPLAY CHAT ---------------- #
-
-for message in st.session_state.messages:
-
-    with st.chat_message(message["role"]):
-
-        st.write(message["content"])
-
-# ---------------- AUTO REFRESH ---------------- #
-
-time.sleep(5)
-
-st.rerun()
+</center>
+""", unsafe_allow_html=True)
