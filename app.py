@@ -1,165 +1,185 @@
 import streamlit as st
+import json
+import os
+
+# ---------------- PAGE CONFIG ---------------- #
 
 st.set_page_config(
     page_title="AI Trading Platform",
     page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
+
+# ---------------- MEMORY ---------------- #
+
+MEMORY_FILE = "data/trading_memory.json"
+
+def load_memory():
+
+    if not os.path.exists(MEMORY_FILE):
+
+        os.makedirs("data", exist_ok=True)
+
+        default_data = {
+            "wallet": 500,
+            "transactions": []
+        }
+
+        with open(MEMORY_FILE, "w") as f:
+            json.dump(default_data, f)
+
+    with open(MEMORY_FILE, "r") as f:
+        return json.load(f)
+
+memory = load_memory()
 
 # ---------------- SESSION ---------------- #
 
 if "wallet" not in st.session_state:
-    st.session_state.wallet = 500
+    st.session_state.wallet = memory["wallet"]
 
 if "demo_wallet" not in st.session_state:
     st.session_state.demo_wallet = 500
 
-# ---------------- CUSTOM CSS ---------------- #
+# ---------------- CSS ---------------- #
 
 st.markdown("""
 <style>
 
-.main {
-    background-color: #0e1117;
-    color: white;
+.block-container{
+    padding-top:2rem;
+    padding-bottom:2rem;
 }
 
-.hero {
-    padding: 40px;
-    border-radius: 20px;
-    background: linear-gradient(
-        135deg,
-        #111827,
-        #1f2937
-    );
-    margin-bottom: 30px;
+.main-title{
+    text-align:center;
+    font-size:50px;
+    font-weight:bold;
+    color:white;
 }
 
-.feature-card {
-    padding: 25px;
-    border-radius: 20px;
-    background: #161b22;
-    border: 1px solid #30363d;
-    transition: 0.3s;
+.subtitle{
+    text-align:center;
+    font-size:20px;
+    color:#b0b0b0;
+    margin-bottom:40px;
 }
 
-.feature-card:hover {
-    transform: scale(1.02);
+.card{
+    background:#161b22;
+    padding:25px;
+    border-radius:18px;
+    text-align:center;
+    border:1px solid #30363d;
+    transition:0.3s;
 }
 
-.wallet-box {
-    background: #161b22;
-    padding: 20px;
-    border-radius: 20px;
-    text-align: center;
-    border: 1px solid #30363d;
+.card:hover{
+    transform:translateY(-5px);
 }
 
-.stButton button {
-    width: 100%;
-    border-radius: 12px;
-    background: #00c896;
-    color: white;
-    border: none;
-    padding: 12px;
-    font-weight: bold;
+.wallet{
+    background:#0f172a;
+    padding:20px;
+    border-radius:18px;
+    text-align:center;
+    border:1px solid #1e293b;
+}
+
+.stock-card{
+    background:#161b22;
+    padding:12px;
+    border-radius:14px;
+    text-align:center;
+    margin-bottom:10px;
+}
+
+.stButton button{
+    width:100%;
+    border:none;
+    border-radius:12px;
+    padding:12px;
+    background:#00c896;
+    color:white;
+    font-size:16px;
+    font-weight:bold;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- HERO SECTION ---------------- #
+# ---------------- HEADER ---------------- #
 
 st.markdown("""
-<div class="hero">
-
-<h1>🚀 AI Trading Platform</h1>
-
-<p>
-Advanced AI-powered trading platform with:
-</p>
-
-<ul>
-<li>📈 Real-Time Market Charts</li>
-<li>🤖 AI Predictions</li>
-<li>💹 Persistent Trading Portfolio</li>
-<li>📊 Live Profit/Loss Tracking</li>
-<li>🇮🇳 Indian + US Stocks</li>
-<li>🧪 Demo Trading System</li>
-<li>💬 AI Trading Chatbot</li>
-</ul>
-
+<div class='main-title'>
+📈 AI Trading Platform
 </div>
 """, unsafe_allow_html=True)
 
-# ---------------- WALLET DISPLAY ---------------- #
+st.markdown("""
+<div class='subtitle'>
+Trade smarter with AI predictions, live charts, and portfolio tracking
+</div>
+""", unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
+# ---------------- WALLETS ---------------- #
 
-with col1:
+c1, c2 = st.columns(2)
+
+with c1:
 
     st.markdown(f"""
-    <div class="wallet-box">
+    <div class='wallet'>
         <h2>💰 Main Wallet</h2>
         <h1>${round(st.session_state.wallet,2)}</h1>
     </div>
     """, unsafe_allow_html=True)
 
-with col2:
+with c2:
 
     st.markdown(f"""
-    <div class="wallet-box">
+    <div class='wallet'>
         <h2>🧪 Demo Wallet</h2>
         <h1>${round(st.session_state.demo_wallet,2)}</h1>
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.write("")
 
 # ---------------- FEATURES ---------------- #
 
-st.subheader("🔥 Platform Features")
+st.subheader("🔥 Features")
 
 f1, f2, f3 = st.columns(3)
 
 with f1:
 
     st.markdown("""
-    <div class="feature-card">
-        <h3>📈 Real-Time Trading</h3>
-        <p>
-        Track live stock prices with dynamic
-        charts and technical indicators.
-        </p>
+    <div class='card'>
+        <h3>📈 Real-Time Charts</h3>
+        <p>Track live stock market prices with dynamic graphs.</p>
     </div>
     """, unsafe_allow_html=True)
 
 with f2:
 
     st.markdown("""
-    <div class="feature-card">
+    <div class='card'>
         <h3>🤖 AI Predictions</h3>
-        <p>
-        AI-based stock prediction system using
-        machine learning and LSTM models.
-        </p>
+        <p>Get AI-based stock price predictions using ML models.</p>
     </div>
     """, unsafe_allow_html=True)
 
 with f3:
 
     st.markdown("""
-    <div class="feature-card">
-        <h3>💬 AI Trading Chatbot</h3>
-        <p>
-        Ask trading and investment questions
-        with real-time AI assistance.
-        </p>
+    <div class='card'>
+        <h3>💬 AI Chatbot</h3>
+        <p>Ask trading-related questions and market analysis.</p>
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.write("")
 
 # ---------------- STOCKS ---------------- #
 
@@ -178,56 +198,61 @@ stocks = [
     "Bharti Airtel"
 ]
 
-st.write(stocks)
+cols = st.columns(5)
 
-st.markdown("<br>", unsafe_allow_html=True)
+for i, stock in enumerate(stocks):
+
+    with cols[i % 5]:
+
+        st.markdown(f"""
+        <div class='stock-card'>
+            {stock}
+        </div>
+        """, unsafe_allow_html=True)
+
+st.write("")
 
 # ---------------- NAVIGATION ---------------- #
 
 st.subheader("🚀 Start Trading")
 
-c1, c2 = st.columns(2)
+b1, b2 = st.columns(2)
 
-with c1:
+with b1:
 
     st.page_link(
         "pages/trading.py",
-        label="📈 Open Trading Dashboard",
-        icon="📈"
+        label="📈 Open Trading Dashboard"
     )
 
-with c2:
+with b2:
 
     st.page_link(
         "pages/demo.py",
-        label="🧪 Open Demo Trading",
-        icon="🧪"
+        label="🧪 Open Demo Trading"
     )
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.write("")
 
 # ---------------- REFERENCES ---------------- #
 
-st.subheader("🌐 Market References")
+st.subheader("🌐 Market Links")
 
 r1, r2, r3 = st.columns(3)
 
 with r1:
-
     st.link_button(
         "Yahoo Finance",
         "https://finance.yahoo.com"
     )
 
 with r2:
-
     st.link_button(
         "TradingView",
         "https://www.tradingview.com"
     )
 
 with r3:
-
     st.link_button(
         "MoneyControl",
         "https://www.moneycontrol.com"
@@ -235,12 +260,11 @@ with r3:
 
 # ---------------- FOOTER ---------------- #
 
-st.markdown("<br><br>", unsafe_allow_html=True)
+st.write("")
+st.write("")
 
 st.markdown("""
 <center>
-
-Made with ❤️ using Streamlit + AI/ML
-
+Built with ❤️ using Streamlit + AI/ML
 </center>
 """, unsafe_allow_html=True)

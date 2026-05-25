@@ -1,4 +1,12 @@
 {
-    "wallet": 500,
-    "transactions": []
+    "wallet": 400,
+    "transactions": [
+        {
+            "Asset": "Apple",
+            "Symbol": "AAPL",
+            "Buy Price": 308.82000732421875,
+            "Investment": 100,
+            "Quantity": 0.3238132168522802
+        }
+    ]
 }
