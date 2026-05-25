@@ -15,11 +15,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- MEMORY FILE ---------------- #
+# ---------------- MEMORY ---------------- #
 
 MEMORY_FILE = "data/demo_memory.json"
-
-# ---------------- LOAD MEMORY ---------------- #
 
 def load_memory():
 
@@ -42,8 +40,6 @@ def load_memory():
 
         return json.load(f)
 
-# ---------------- SAVE MEMORY ---------------- #
-
 def save_memory(data):
 
     with open(MEMORY_FILE, "w") as f:
@@ -54,21 +50,13 @@ memory = load_memory()
 
 # ---------------- SESSION ---------------- #
 
-if "demo_wallet" not in st.session_state:
+st.session_state.demo_wallet = (
+    memory["demo_wallet"]
+)
 
-    st.session_state.demo_wallet = (
-        memory["demo_wallet"]
-    )
-
-if "demo_transactions" not in st.session_state:
-
-    st.session_state.demo_transactions = (
-        memory["demo_transactions"]
-    )
-
-# ---------------- TITLE ---------------- #
-
-st.title("🧪 Demo Trading Platform")
+st.session_state.demo_transactions = (
+    memory["demo_transactions"]
+)
 
 # ---------------- STOCKS ---------------- #
 
@@ -85,6 +73,10 @@ stock_options = {
     "Bharti Airtel": "BHARTIARTL.NS"
 }
 
+# ---------------- TITLE ---------------- #
+
+st.title("🧪 Demo Trading Platform")
+
 # ---------------- WALLET ---------------- #
 
 c1, c2 = st.columns([8,2])
@@ -96,7 +88,7 @@ with c2:
         f"${round(st.session_state.demo_wallet,2)}"
     )
 
-# ---------------- SELECT STOCK ---------------- #
+# ---------------- STOCK ---------------- #
 
 selected_stock = st.selectbox(
     "Select Demo Stock",
@@ -105,7 +97,7 @@ selected_stock = st.selectbox(
 
 symbol = stock_options[selected_stock]
 
-# ---------------- LOAD DATA ---------------- #
+# ---------------- DATA ---------------- #
 
 df = load_data(symbol)
 
@@ -119,12 +111,11 @@ previous_price = float(
     df["Close"].iloc[-2]
 )
 
-price_change = (
-    current_price - previous_price
-)
-
 price_percent = (
-    price_change / previous_price
+    (
+        current_price - previous_price
+    )
+    / previous_price
 ) * 100
 
 # ---------------- METRICS ---------------- #
@@ -153,7 +144,7 @@ with m3:
         round(df["MACD"].iloc[-1],2)
     )
 
-# ---------------- CHART ---------------- #
+# ---------------- GRAPH ---------------- #
 
 fig = go.Figure()
 
@@ -162,7 +153,6 @@ fig.add_trace(
         x=df["Date"],
         y=df["Close"],
         mode="lines",
-        name="Price",
         line=dict(width=3)
     )
 )
@@ -170,9 +160,7 @@ fig.add_trace(
 fig.update_layout(
     template="plotly_dark",
     height=600,
-    title=f"{selected_stock} Demo Market Chart",
-    xaxis_title="Date",
-    yaxis_title="Price"
+    title=f"{selected_stock} Demo Chart"
 )
 
 st.plotly_chart(
@@ -180,12 +168,12 @@ st.plotly_chart(
     use_container_width=True
 )
 
-# ---------------- BUY STOCK ---------------- #
+# ---------------- BUY ---------------- #
 
-st.subheader("💹 Demo Buy Stocks")
+st.subheader("💹 Buy Demo Stocks")
 
-investment_amount = st.number_input(
-    "Demo Investment Amount ($)",
+investment = st.number_input(
+    "Demo Investment",
     min_value=1,
     max_value=max(
         1,
@@ -197,18 +185,18 @@ investment_amount = st.number_input(
 if st.button("Buy Demo Stock"):
 
     quantity = (
-        investment_amount / current_price
+        investment / current_price
     )
 
     st.session_state.demo_wallet -= (
-        investment_amount
+        investment
     )
 
     trade = {
         "Asset": selected_stock,
         "Symbol": symbol,
         "Buy Price": current_price,
-        "Investment": investment_amount,
+        "Investment": investment,
         "Quantity": quantity
     }
 
@@ -234,7 +222,7 @@ if st.button("Buy Demo Stock"):
 
 st.subheader("📊 Demo Portfolio")
 
-updated_transactions = []
+portfolio = []
 
 portfolio_value = 0
 
@@ -250,16 +238,16 @@ for trade in st.session_state.demo_transactions:
         latest_df["Close"].iloc[-1]
     )
 
+    current_value = (
+        trade["Quantity"] * latest_price
+    )
+
     pnl_percent = (
         (latest_price - trade["Buy Price"])
         / trade["Buy Price"]
     ) * 100
 
-    current_value = (
-        trade["Quantity"] * latest_price
-    )
-
-    profit_loss_amount = (
+    profit_amount = (
         current_value
         - trade["Investment"]
     )
@@ -270,7 +258,7 @@ for trade in st.session_state.demo_transactions:
         trade["Investment"]
     )
 
-    updated_transactions.append({
+    portfolio.append({
         "Asset": trade["Asset"],
         "Buy Price": round(
             trade["Buy Price"],2
@@ -288,12 +276,12 @@ for trade in st.session_state.demo_transactions:
             pnl_percent,2
         ),
         "Profit/Loss Amount": round(
-            profit_loss_amount,2
+            profit_amount,2
         )
     })
 
 portfolio_df = pd.DataFrame(
-    updated_transactions
+    portfolio
 )
 
 st.dataframe(

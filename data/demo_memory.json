@@ -1,5 +1,5 @@
 {
-    "demo_wallet": 300,
+    "demo_wallet": 299,
     "demo_transactions": [
         {
             "Asset": "Tesla",
@@ -7,6 +7,13 @@
             "Buy Price": 426.010009765625,
             "Investment": 200,
             "Quantity": 0.4694725368308426
+        },
+        {
+            "Asset": "NVIDIA",
+            "Symbol": "NVDA",
+            "Buy Price": 215.3300018310547,
+            "Investment": 1,
+            "Quantity": 0.004644034697889372
         }
     ]
 }
