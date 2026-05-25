@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import yfinance as yf
 
 # ---------------- PAGE CONFIG ---------------- #
 
@@ -48,6 +49,16 @@ demo_memory = load_json(
     }
 )
 
+# ---------------- TOP 5 TRENDING STOCKS ---------------- #
+
+stocks = {
+    "Apple": "AAPL",
+    "Tesla": "TSLA",
+    "NVIDIA": "NVDA",
+    "Microsoft": "MSFT",
+    "Bitcoin": "BTC-USD"
+}
+
 # ---------------- CSS ---------------- #
 
 st.markdown("""
@@ -64,8 +75,7 @@ html, body, [class*="css"] {
 
 .block-container {
     padding-top: 1rem;
-    padding-bottom: 2rem;
-    max-width: 1400px;
+    max-width: 1450px;
 }
 
 .hero {
@@ -79,7 +89,7 @@ html, body, [class*="css"] {
 
     padding: 60px;
     border-radius: 30px;
-    margin-bottom: 40px;
+    margin-bottom: 30px;
     border: 1px solid #30363d;
 }
 
@@ -87,12 +97,12 @@ html, body, [class*="css"] {
     font-size: 60px;
     font-weight: 800;
     color: white;
-    margin-bottom: 10px;
 }
 
 .hero-subtitle {
-    font-size: 20px;
+    font-size: 22px;
     color: #cbd5e1;
+    margin-top: 10px;
     line-height: 1.7;
 }
 
@@ -104,15 +114,10 @@ html, body, [class*="css"] {
         #1e293b
     );
 
-    padding: 30px;
-    border-radius: 25px;
+    padding: 28px;
+    border-radius: 24px;
     text-align: center;
     border: 1px solid #30363d;
-    transition: 0.3s;
-}
-
-.wallet-card:hover {
-    transform: translateY(-5px);
 }
 
 .wallet-title {
@@ -121,9 +126,9 @@ html, body, [class*="css"] {
 }
 
 .wallet-value {
+    color: #00c896;
     font-size: 42px;
     font-weight: bold;
-    color: #00c896;
 }
 
 .feature-card {
@@ -134,22 +139,21 @@ html, body, [class*="css"] {
         #111827
     );
 
-    padding: 25px;
-    border-radius: 22px;
+    padding: 30px;
+    border-radius: 24px;
     border: 1px solid #30363d;
     text-align: center;
     transition: 0.3s;
-    height: 100%;
 }
 
 .feature-card:hover {
-    transform: translateY(-6px);
+    transform: translateY(-5px);
     border: 1px solid #00c896;
 }
 
 .feature-icon {
-    font-size: 40px;
-    margin-bottom: 10px;
+    font-size: 42px;
+    margin-bottom: 12px;
 }
 
 .feature-title {
@@ -163,42 +167,18 @@ html, body, [class*="css"] {
     line-height: 1.6;
 }
 
-.stock-card {
-    background:
-    linear-gradient(
-        135deg,
-        #161b22,
-        #111827
-    );
-
-    padding: 18px;
-    border-radius: 18px;
-    border: 1px solid #30363d;
-    text-align: center;
-    margin-bottom: 15px;
-    transition: 0.3s;
-}
-
-.stock-card:hover {
-    transform: scale(1.03);
-    border: 1px solid #00c896;
-}
-
-.stock-name {
-    font-size: 17px;
-    font-weight: 600;
-}
-
 .section-title {
     font-size: 34px;
     font-weight: 700;
     margin-bottom: 20px;
+    color: white;
 }
 
 .stButton button {
     width: 100%;
     border-radius: 14px;
-    background: linear-gradient(
+    background:
+    linear-gradient(
         135deg,
         #00c896,
         #00a67d
@@ -206,14 +186,9 @@ html, body, [class*="css"] {
 
     color: white;
     border: none;
-    padding: 15px;
-    font-size: 17px;
+    padding: 13px;
+    font-size: 16px;
     font-weight: bold;
-    transition: 0.3s;
-}
-
-.stButton button:hover {
-    transform: scale(1.02);
 }
 
 .footer {
@@ -226,7 +201,7 @@ html, body, [class*="css"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- HERO ---------------- #
+# ---------------- HERO SECTION ---------------- #
 
 st.markdown("""
 <div class="hero">
@@ -237,7 +212,7 @@ st.markdown("""
 
 <div class="hero-subtitle">
 Trade smarter with AI-powered predictions,
-real-time market tracking, persistent portfolios,
+real-time stock tracking, persistent portfolios,
 and intelligent trading insights.
 </div>
 
@@ -280,120 +255,113 @@ with c2:
     </div>
     """, unsafe_allow_html=True)
 
-st.write("")
+# ---------------- TRENDING STOCKS ---------------- #
 
-# ---------------- FEATURES ---------------- #
+st.write("")
 
 st.markdown("""
 <div class="section-title">
-🔥 Platform Features
+🔥 Top Trending Stocks
 </div>
 """, unsafe_allow_html=True)
 
-f1, f2, f3 = st.columns(3)
+trend_cols = st.columns(5)
 
-with f1:
+stock_items = list(stocks.items())
 
-    st.markdown("""
-    <div class="feature-card">
+for i, (name, ticker) in enumerate(stock_items):
 
-    <div class="feature-icon">
-    📈
-    </div>
+    with trend_cols[i]:
 
-    <div class="feature-title">
-    Real-Time Charts
-    </div>
+        try:
 
-    <div class="feature-text">
-    Monitor live stock movements with dynamic market charts and indicators.
-    </div>
+            stock = yf.Ticker(ticker)
 
-    </div>
-    """, unsafe_allow_html=True)
+            hist = stock.history(period="5d")
 
-with f2:
+            current_price = float(
+                hist["Close"].iloc[-1]
+            )
 
-    st.markdown("""
-    <div class="feature-card">
+            previous_price = float(
+                hist["Close"].iloc[-2]
+            )
 
-    <div class="feature-icon">
-    🤖
-    </div>
+            percent = (
+                (
+                    current_price
+                    - previous_price
+                )
+                / previous_price
+            ) * 100
 
-    <div class="feature-title">
-    AI Predictions
-    </div>
+            percent_color = (
+                "#00ff99"
+                if percent >= 0
+                else "#ff4d4d"
+            )
 
-    <div class="feature-text">
-    Machine learning powered stock predictions using LSTM neural networks.
-    </div>
+            arrow = (
+                "📈"
+                if percent >= 0
+                else "📉"
+            )
 
-    </div>
-    """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style="
+                background:#161b22;
+                padding:20px;
+                border-radius:20px;
+                border:1px solid #30363d;
+                text-align:center;
+                margin-bottom:15px;
+                height:340px;
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                align-items:center;
+            ">
 
-with f3:
+            <h3 style="
+                color:white;
+                margin-bottom:20px;
+                font-size:36px;
+            ">
+            {name}
+            </h3>
 
-    st.markdown("""
-    <div class="feature-card">
+            <h1 style="
+                color:#00c896;
+                font-size:42px;
+                margin-bottom:20px;
+            ">
+            ${round(current_price,2)}
+            </h1>
 
-    <div class="feature-icon">
-    💬
-    </div>
+            <h4 style="
+                color:{percent_color};
+                font-size:30px;
+            ">
+            {arrow} {round(percent,2)}%
+            </h4>
 
-    <div class="feature-title">
-    AI Chatbot
-    </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    <div class="feature-text">
-    Ask trading questions and get intelligent market insights instantly.
-    </div>
+            st.link_button(
+                f"🛒 Buy {name}",
+                f"http://localhost:8501/trading?stock={ticker}"
+            )
 
-    </div>
-    """, unsafe_allow_html=True)
+        except:
 
-st.write("")
-
-# ---------------- STOCKS ---------------- #
-
-st.markdown("""
-<div class="section-title">
-📊 Supported Assets
-</div>
-""", unsafe_allow_html=True)
-
-stocks = [
-    "🍎 Apple",
-    "🚗 Tesla",
-    "🪟 Microsoft",
-    "🌐 Google",
-    "💻 NVIDIA",
-    "₿ Bitcoin",
-    "🏢 Reliance",
-    "🏦 HDFC Bank",
-    "🏦 ICICI Bank",
-    "📡 Airtel"
-]
-
-cols = st.columns(5)
-
-for i, stock in enumerate(stocks):
-
-    with cols[i % 5]:
-
-        st.markdown(f"""
-        <div class="stock-card">
-
-        <div class="stock-name">
-        {stock}
-        </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-st.write("")
+            st.error(
+                f"{name} unavailable"
+            )
 
 # ---------------- NAVIGATION ---------------- #
+
+st.write("")
 
 st.markdown("""
 <div class="section-title">
@@ -417,9 +385,9 @@ with n2:
         label="🧪 Open Demo Trading"
     )
 
-st.write("")
+# ---------------- MARKET LINKS ---------------- #
 
-# ---------------- REFERENCES ---------------- #
+st.write("")
 
 st.markdown("""
 <div class="section-title">
