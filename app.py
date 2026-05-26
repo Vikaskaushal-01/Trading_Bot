@@ -257,6 +257,7 @@ with c2:
 
 # ---------------- TRENDING STOCKS ---------------- #
 
+
 st.write("")
 
 st.markdown("""
@@ -268,6 +269,8 @@ st.markdown("""
 trend_cols = st.columns(5)
 
 stock_items = list(stocks.items())
+
+CARD_HEIGHT = 320
 
 for i, (name, ticker) in enumerate(stock_items):
 
@@ -307,83 +310,96 @@ for i, (name, ticker) in enumerate(stock_items):
                 else "📉"
             )
 
+            display_price = (
+                f"${current_price:,.2f}"
+            )
+
             st.markdown(f"""
             <div style="
-                background:#161b22;
-                padding:20px;
-                border-radius:20px;
-                border:1px solid #30363d;
-                text-align:center;
-                margin-bottom:15px;
-                height:340px;
+                background:#0f172a;
+                border-radius:22px;
+                border:1px solid #1e293b;
+                height:{CARD_HEIGHT}px;
+                width:100%;
                 display:flex;
                 flex-direction:column;
                 justify-content:center;
                 align-items:center;
+                text-align:center;
+                padding:20px;
+                box-sizing:border-box;
+                margin-bottom:22px;
             ">
 
-            <h3 style="
+            <div style="
                 color:white;
-                margin-bottom:20px;
-                font-size:36px;
+                font-size:28px;
+                font-weight:700;
+                margin-bottom:25px;
+                min-height:40px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
             ">
             {name}
-            </h3>
+            </div>
 
-            <h1 style="
-                color:#00c896;
-                font-size:42px;
-                margin-bottom:20px;
+            <div style="
+                color:#00d4aa;
+                font-size:32px;
+                font-weight:800;
+                margin-bottom:25px;
+                word-break:break-word;
+                line-height:1.2;
             ">
-            ${round(current_price,2)}
-            </h1>
+            {display_price}
+            </div>
 
-            <h4 style="
+            <div style="
                 color:{percent_color};
-                font-size:30px;
+                font-size:24px;
+                font-weight:700;
             ">
             {arrow} {round(percent,2)}%
-            </h4>
+            </div>
 
             </div>
             """, unsafe_allow_html=True)
 
+            st.markdown(
+                "<div style='margin-top:12px;'></div>",
+                unsafe_allow_html=True
+            )
+
             st.link_button(
                 f"🛒 Buy {name}",
-                f"http://localhost:8501/trading?stock={ticker}"
+                f"http://localhost:8501/trading?stock={ticker}",
+                use_container_width=True
             )
 
-        except:
+        except Exception:
 
-            st.error(
-                f"{name} unavailable"
-            )
-
-# ---------------- NAVIGATION ---------------- #
-
-st.write("")
-
-st.markdown("""
-<div class="section-title">
-🚀 Start Trading
-</div>
-""", unsafe_allow_html=True)
-
-n1, n2 = st.columns(2)
-
-with n1:
-
-    st.page_link(
-        "pages/trading.py",
-        label="📈 Open Trading Dashboard"
-    )
-
-with n2:
-
-    st.page_link(
-        "pages/demo.py",
-        label="🧪 Open Demo Trading"
-    )
+            st.markdown(f"""
+            <div style="
+                background:#0f172a;
+                border-radius:22px;
+                border:1px solid #1e293b;
+                height:{CARD_HEIGHT}px;
+                width:100%;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                text-align:center;
+                color:#ff4d4d;
+                font-size:20px;
+                font-weight:700;
+                padding:20px;
+                box-sizing:border-box;
+                margin-bottom:22px;
+            ">
+            {name} unavailable
+            </div>
+            """, unsafe_allow_html=True)
 
 # ---------------- MARKET LINKS ---------------- #
 
