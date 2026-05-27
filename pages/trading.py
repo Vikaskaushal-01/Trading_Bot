@@ -184,49 +184,67 @@ investment_amount = st.number_input(
     step=1
 )
 
-if st.button("Buy Now"):
+buy_col1, buy_col2 = st.columns([3,1])
 
-    quantity = (
-        investment_amount / current_price
-    )
+with buy_col1:
 
-    st.session_state.wallet -= investment_amount
+    if st.button(
+        "🛒 Buy Now",
+        use_container_width=True
+    ):
 
-    trade = {
-        "Asset": selected_stock,
-        "Symbol": symbol,
-        "Buy Price": current_price,
-        "Investment": investment_amount,
-        "Quantity": quantity
-    }
+        if investment_amount <= st.session_state.wallet:
 
-    st.session_state.transactions.append(trade)
+            quantity = (
+                investment_amount
+                / current_price
+            )
 
-    memory["wallet"] = (
-        st.session_state.wallet
-    )
+            st.session_state.wallet -= (
+                investment_amount
+            )
 
-    memory["transactions"] = (
-        st.session_state.transactions
-    )
+            trade = {
+                "Asset": selected_stock,
+                "Symbol": symbol,
+                "Buy Price": current_price,
+                "Investment": investment_amount,
+                "Quantity": quantity
+            }
 
-    save_memory(memory)
+            st.session_state.transactions.append(
+                trade
+            )
 
-    st.success(
-        "Stock Purchased Successfully"
-    )
+            memory["wallet"] = (
+                st.session_state.wallet
+            )
+
+            memory["transactions"] = (
+                st.session_state.transactions
+            )
+
+            save_memory(memory)
+
+            st.success(
+                "Stock Purchased Successfully"
+            )
+
+            st.rerun()
 
 # ---------------- PORTFOLIO ---------------- #
 
 st.subheader("📊 Live Portfolio")
 
-updated_transactions = []
-
 portfolio_value = 0
 
 initial_investment_total = 0
 
-for trade in st.session_state.transactions:
+updated_transactions = []
+
+for index, trade in enumerate(
+    st.session_state.transactions
+):
 
     latest_df = load_data(
         trade["Symbol"]
@@ -236,16 +254,20 @@ for trade in st.session_state.transactions:
         latest_df["Close"].iloc[-1]
     )
 
+    current_value = (
+        trade["Quantity"]
+        * latest_price
+    )
+
     pnl_percent = (
-        (latest_price - trade["Buy Price"])
+        (
+            latest_price
+            - trade["Buy Price"]
+        )
         / trade["Buy Price"]
     ) * 100
 
-    current_value = (
-        trade["Quantity"] * latest_price
-    )
-
-    profit_loss_amount = (
+    profit_amount = (
         current_value
         - trade["Investment"]
     )
@@ -255,6 +277,95 @@ for trade in st.session_state.transactions:
     initial_investment_total += (
         trade["Investment"]
     )
+
+    # ---------------- PORTFOLIO CARD ---------------- #
+
+    card_col1, card_col2 = st.columns([5,1])
+
+    with card_col1:
+
+        st.markdown(f"""
+        <div style="
+            background:#111827;
+            padding:20px;
+            border-radius:18px;
+            border:1px solid #30363d;
+            margin-bottom:15px;
+        ">
+
+        <h3 style="color:white;">
+        {trade['Asset']}
+        </h3>
+
+        <p style="color:#9ca3af;">
+        Buy Price: ${round(trade['Buy Price'],2)}
+        </p>
+
+        <p style="color:#9ca3af;">
+        Current Price: ${round(latest_price,2)}
+        </p>
+
+        <p style="color:#9ca3af;">
+        Investment: ${round(trade['Investment'],2)}
+        </p>
+
+        <p style="color:#00d4aa;">
+        Current Value: ${round(current_value,2)}
+        </p>
+
+        <p style="
+            color:{
+                '#00ff99'
+                if pnl_percent >= 0
+                else '#ff4d4d'
+            };
+            font-weight:bold;
+        ">
+        Profit/Loss:
+        {round(pnl_percent,2)}%
+        </p>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+    with card_col2:
+
+        st.write("")
+        st.write("")
+        st.write("")
+
+        if st.button(
+            f"💰 Sell",
+            key=f"sell_{index}",
+            use_container_width=True
+        ):
+
+            # ADD CURRENT VALUE BACK
+            st.session_state.wallet += (
+                current_value
+            )
+
+            # REMOVE STOCK
+            st.session_state.transactions.pop(
+                index
+            )
+
+            # SAVE MEMORY
+            memory["wallet"] = (
+                st.session_state.wallet
+            )
+
+            memory["transactions"] = (
+                st.session_state.transactions
+            )
+
+            save_memory(memory)
+
+            st.success(
+                "Stock Sold Successfully"
+            )
+
+            st.rerun()
 
     updated_transactions.append({
         "Asset": trade["Asset"],
@@ -274,24 +385,14 @@ for trade in st.session_state.transactions:
             pnl_percent,2
         ),
         "Profit/Loss Amount": round(
-            profit_loss_amount,2
+            profit_amount,2
         )
     })
 
-portfolio_df = pd.DataFrame(
-    updated_transactions
-)
-
-st.dataframe(
-    portfolio_df,
-    use_container_width=True
-)
-
-# ---------------- LIVE WALLET ---------------- #
+# ---------------- LIVE METRICS ---------------- #
 
 live_wallet = (
     st.session_state.wallet
-    + portfolio_value
 )
 
 total_profit_loss = (
@@ -308,28 +409,26 @@ if initial_investment_total > 0:
         / initial_investment_total
     ) * 100
 
-# ---------------- METRICS ---------------- #
+metric1, metric2, metric3 = st.columns(3)
 
-x1, x2, x3 = st.columns(3)
-
-with x1:
+with metric1:
 
     st.metric(
-        "Live Wallet Value",
-        f"${round(live_wallet,2)}"
+        "💰 Available Wallet",
+        f"${round(st.session_state.wallet,2)}"
     )
 
-with x2:
+with metric2:
 
     st.metric(
-        "Total Profit/Loss",
-        f"${round(total_profit_loss,2)}"
+        "📈 Portfolio Value",
+        f"${round(portfolio_value,2)}"
     )
 
-with x3:
+with metric3:
 
     st.metric(
-        "Profit/Loss %",
+        "📊 Total Profit/Loss",
         f"{round(profit_percent,2)}%"
     )
 
@@ -358,17 +457,33 @@ st.metric(
 
 st.subheader("💬 AI Trading Chatbot")
 
+# SHOW ONLY REAL CHAT MESSAGES
+if len(st.session_state.messages) > 0:
+
+    for message in st.session_state.messages:
+
+        with st.chat_message(
+            message["role"]
+        ):
+
+            st.write(
+                message["content"]
+            )
+
+# USER INPUT
 user_input = st.chat_input(
     "Ask trading-related questions..."
 )
 
 if user_input:
 
+    # USER MESSAGE
     st.session_state.messages.append({
         "role": "user",
         "content": user_input
     })
 
+    # AI RESPONSE
     response = ask_bot(user_input)
 
     st.session_state.messages.append({
@@ -376,15 +491,7 @@ if user_input:
         "content": response
     })
 
-for message in st.session_state.messages:
-
-    with st.chat_message(
-        message["role"]
-    ):
-
-        st.write(
-            message["content"]
-        )
+    st.rerun()
 
 # ---------------- AUTO REFRESH ---------------- #
 

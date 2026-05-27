@@ -262,7 +262,7 @@ st.write("")
 
 st.markdown("""
 <div class="section-title">
-🔥 Top Trending Stocks
+🔥_Top Trending Stocks
 </div>
 """, unsafe_allow_html=True)
 
