@@ -103,9 +103,14 @@ st.session_state.transactions = (
     memory["transactions"]
 )
 
-st.session_state.messages = (
-    memory["messages"]
-)
+# st.session_state.messages = (
+#     memory["messages"]
+# )
+
+# CHAT RESET EVERY RELOAD
+if "messages" not in st.session_state:
+
+    st.session_state.messages = []
 
 # ---------------- STOCK OPTIONS ---------------- #
 
@@ -642,14 +647,8 @@ if user_input:
 
     })
 
-    # SAVE MEMORY
-    memory["messages"] = (
-        st.session_state.messages
-    )
-
-    save_memory(memory)
-
     st.rerun()
+
 
 # DISPLAY CHAT
 for msg in st.session_state.messages:
