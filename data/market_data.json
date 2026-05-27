@@ -124,5 +124,40 @@
         "change_percent": -0.24,
         "volume": 1597965.0,
         "timestamp": "2026-05-27 16:59:18.039899"
+    },
+    {
+        "stock": "Apple",
+        "price": 311.07,
+        "change_percent": -0.05,
+        "volume": 521691.0,
+        "timestamp": "2026-05-27 22:01:20.373540"
+    },
+    {
+        "stock": "Tesla",
+        "price": 441.4,
+        "change_percent": -0.11,
+        "volume": 101116.0,
+        "timestamp": "2026-05-27 22:01:20.523644"
+    },
+    {
+        "stock": "Microsoft",
+        "price": 412.73,
+        "change_percent": -0.01,
+        "volume": 15542.0,
+        "timestamp": "2026-05-27 22:01:20.703929"
+    },
+    {
+        "stock": "NVIDIA",
+        "price": 210.5,
+        "change_percent": -0.09,
+        "volume": 135269.0,
+        "timestamp": "2026-05-27 22:01:20.919274"
+    },
+    {
+        "stock": "Google",
+        "price": 391.44,
+        "change_percent": -0.02,
+        "volume": 21371.0,
+        "timestamp": "2026-05-27 22:01:21.074976"
     }
 ]
