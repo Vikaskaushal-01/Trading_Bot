@@ -1,0 +1,128 @@
+[
+    {
+        "stock": "Apple",
+        "price": 308.38,
+        "change_percent": 0.09,
+        "volume": 2036455.0,
+        "timestamp": "2026-05-27 16:54:49.288652"
+    },
+    {
+        "stock": "Tesla",
+        "price": 433.57,
+        "change_percent": 0.01,
+        "volume": 1335254.0,
+        "timestamp": "2026-05-27 16:54:49.447400"
+    },
+    {
+        "stock": "Microsoft",
+        "price": 416.15,
+        "change_percent": 0.02,
+        "volume": 1107150.0,
+        "timestamp": "2026-05-27 16:54:49.606846"
+    },
+    {
+        "stock": "NVIDIA",
+        "price": 214.83,
+        "change_percent": 0.23,
+        "volume": 4401439.0,
+        "timestamp": "2026-05-27 16:54:49.756284"
+    },
+    {
+        "stock": "Google",
+        "price": 388.96,
+        "change_percent": 0.15,
+        "volume": 995122.0,
+        "timestamp": "2026-05-27 16:54:49.896330"
+    },
+    {
+        "stock": "Reliance",
+        "price": 1352.9,
+        "change_percent": 0.12,
+        "volume": 217879.0,
+        "timestamp": "2026-05-27 16:54:50.134095"
+    },
+    {
+        "stock": "HDFC Bank",
+        "price": 759.25,
+        "change_percent": 0.11,
+        "volume": 1426798.0,
+        "timestamp": "2026-05-27 16:54:50.449034"
+    },
+    {
+        "stock": "ICICI Bank",
+        "price": 1272.7,
+        "change_percent": 0.09,
+        "volume": 310901.0,
+        "timestamp": "2026-05-27 16:54:50.598777"
+    },
+    {
+        "stock": "Bharti Airtel",
+        "price": 1847.9,
+        "change_percent": -0.36,
+        "volume": 492737.0,
+        "timestamp": "2026-05-27 16:54:50.732345"
+    },
+    {
+        "stock": "Apple",
+        "price": 308.38,
+        "change_percent": 0.0,
+        "volume": 4315325.0,
+        "timestamp": "2026-05-27 16:59:16.335752"
+    },
+    {
+        "stock": "Tesla",
+        "price": 433.57,
+        "change_percent": 0.58,
+        "volume": 3706229.0,
+        "timestamp": "2026-05-27 16:59:16.645246"
+    },
+    {
+        "stock": "Microsoft",
+        "price": 416.15,
+        "change_percent": 0.1,
+        "volume": 2261738.0,
+        "timestamp": "2026-05-27 16:59:16.854234"
+    },
+    {
+        "stock": "NVIDIA",
+        "price": 214.83,
+        "change_percent": 0.57,
+        "volume": 12961311.0,
+        "timestamp": "2026-05-27 16:59:17.212831"
+    },
+    {
+        "stock": "Google",
+        "price": 388.96,
+        "change_percent": 0.46,
+        "volume": 2392695.0,
+        "timestamp": "2026-05-27 16:59:17.414563"
+    },
+    {
+        "stock": "Reliance",
+        "price": 1352.9,
+        "change_percent": 0.18,
+        "volume": 1910351.0,
+        "timestamp": "2026-05-27 16:59:17.566114"
+    },
+    {
+        "stock": "HDFC Bank",
+        "price": 759.25,
+        "change_percent": 0.2,
+        "volume": 10088546.0,
+        "timestamp": "2026-05-27 16:59:17.730897"
+    },
+    {
+        "stock": "ICICI Bank",
+        "price": 1272.7,
+        "change_percent": 0.17,
+        "volume": 2455570.0,
+        "timestamp": "2026-05-27 16:59:17.884551"
+    },
+    {
+        "stock": "Bharti Airtel",
+        "price": 1847.9,
+        "change_percent": -0.24,
+        "volume": 1597965.0,
+        "timestamp": "2026-05-27 16:59:18.039899"
+    }
+]

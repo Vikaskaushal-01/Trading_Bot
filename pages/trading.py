@@ -1,95 +1,197 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+import json
+import os
 import time
 
 from utils.data_loader import load_data
 from utils.indicators import add_indicators
-from utils.predictor import train_model
+from utils.realtime_predictor import predict_stock_price
+from utils.scraper import fetch_market_data
 from utils.chatbot import ask_bot
-from utils.wallet import (
-    load_memory,
-    save_memory,
-    add_money
-)
 
 # ---------------- PAGE CONFIG ---------------- #
 
 st.set_page_config(
-    page_title="AI Trading Dashboard",
+    page_title="Live Trading",
     layout="wide"
 )
 
 # ---------------- MEMORY ---------------- #
 
+MEMORY_FILE = "data/trading_memory.json"
+
+
+def load_memory():
+
+    os.makedirs(
+        "data",
+        exist_ok=True
+    )
+
+    default_data = {
+
+        "wallet": 500,
+
+        "transactions": [],
+
+        "messages": []
+
+    }
+
+    # CREATE FILE
+    if not os.path.exists(MEMORY_FILE):
+
+        with open(MEMORY_FILE, "w") as f:
+
+            json.dump(
+                default_data,
+                f,
+                indent=4
+            )
+
+    try:
+
+        with open(MEMORY_FILE, "r") as f:
+
+            memory = json.load(f)
+
+    except:
+
+        memory = default_data
+
+    # FIX MISSING KEYS
+    for key in default_data:
+
+        if key not in memory:
+
+            memory[key] = default_data[key]
+
+    # SAVE UPDATED MEMORY
+    with open(MEMORY_FILE, "w") as f:
+
+        json.dump(
+            memory,
+            f,
+            indent=4
+        )
+
+    return memory
+
+
+def save_memory(data):
+
+    with open(MEMORY_FILE, "w") as f:
+
+        json.dump(
+            data,
+            f,
+            indent=4
+        )
+
+
 memory = load_memory()
 
 # ---------------- SESSION ---------------- #
 
-if "wallet" not in st.session_state:
+st.session_state.wallet = (
+    memory["wallet"]
+)
 
-    st.session_state.wallet = memory["wallet"]
+st.session_state.transactions = (
+    memory["transactions"]
+)
 
-if "transactions" not in st.session_state:
-
-    st.session_state.transactions = memory["transactions"]
-
-if "messages" not in st.session_state:
-
-    st.session_state.messages = []
+st.session_state.messages = (
+    memory["messages"]
+)
 
 # ---------------- STOCK OPTIONS ---------------- #
 
 stock_options = {
+
     "Apple": "AAPL",
+
     "Tesla": "TSLA",
+
     "Microsoft": "MSFT",
-    "Google": "GOOGL",
+
     "NVIDIA": "NVDA",
+
+    "Google": "GOOGL",
+
     "Bitcoin": "BTC-USD",
+
     "Reliance Industries": "RELIANCE.NS",
+
     "HDFC Bank": "HDFCBANK.NS",
+
     "ICICI Bank": "ICICIBANK.NS",
+
     "Bharti Airtel": "BHARTIARTL.NS"
+
 }
 
 # ---------------- TITLE ---------------- #
 
-st.title("📈 AI Trading Dashboard")
+st.title("📈 AI Live Trading Platform")
 
 # ---------------- WALLET ---------------- #
 
-c1, c2 = st.columns([8,2])
+wallet_col1, wallet_col2 = st.columns([8,2])
 
-with c2:
+with wallet_col2:
 
-    st.metric(
-        "Wallet Balance",
-        f"${round(st.session_state.wallet,2)}"
+    st.markdown(f"""
+    <div style="
+        background:#111827;
+        padding:25px;
+        border-radius:18px;
+        border:1px solid #30363d;
+    ">
+
+    <h3 style="color:white;">
+    Wallet Balance
+    </h3>
+
+    <h1 style="color:#00d4aa;">
+    ${round(st.session_state.wallet,2)}
+    </h1>
+
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.write("")
+
+    add_money = st.number_input(
+        "Add Funds",
+        min_value=1,
+        step=1
     )
 
-    with st.expander("➕ Add Money"):
+    if st.button("➕ Add Money"):
 
-        amount = st.number_input(
-            "Enter Amount",
-            min_value=1,
-            step=1
+        st.session_state.wallet += (
+            add_money
         )
 
-        if st.button("Add Funds"):
+        memory["wallet"] = (
+            st.session_state.wallet
+        )
 
-            updated_wallet = add_money(amount)
+        save_memory(memory)
 
-            st.session_state.wallet = updated_wallet
+        st.success(
+            "Money Added"
+        )
 
-            st.success(
-                "Money Added Successfully"
-            )
+        st.rerun()
 
-# ---------------- SELECT STOCK ---------------- #
+# ---------------- STOCK SELECT ---------------- #
 
 selected_stock = st.selectbox(
-    "Select Asset",
+    "Select Stock",
     list(stock_options.keys())
 )
 
@@ -101,6 +203,8 @@ df = load_data(symbol)
 
 df = add_indicators(df)
 
+# ---------------- CURRENT DATA ---------------- #
+
 current_price = float(
     df["Close"].iloc[-1]
 )
@@ -109,12 +213,16 @@ previous_price = float(
     df["Close"].iloc[-2]
 )
 
-price_change = (
-    current_price - previous_price
+volume = float(
+    df["Volume"].iloc[-1]
 )
 
 price_percent = (
-    price_change / previous_price
+    (
+        current_price
+        - previous_price
+    )
+    / previous_price
 ) * 100
 
 # ---------------- METRICS ---------------- #
@@ -143,26 +251,42 @@ with m3:
         round(df["MACD"].iloc[-1],2)
     )
 
-# ---------------- CHART ---------------- #
+# ---------------- GRAPH ---------------- #
 
 fig = go.Figure()
 
 fig.add_trace(
+
     go.Scatter(
-        x=df["Date"],
+
+        x=df.index,
+
         y=df["Close"],
+
         mode="lines",
+
         name="Price",
-        line=dict(width=3)
+
+        line=dict(
+            width=3
+        )
+
     )
+
 )
 
 fig.update_layout(
+
     template="plotly_dark",
+
     height=600,
+
     title=f"{selected_stock} Live Market Chart",
-    xaxis_title="Date",
+
+    xaxis_title="Time",
+
     yaxis_title="Price"
+
 )
 
 st.plotly_chart(
@@ -170,67 +294,86 @@ st.plotly_chart(
     use_container_width=True
 )
 
-# ---------------- BUY STOCK ---------------- #
+# ---------------- MARKET FEED ---------------- #
+
+st.subheader("🌍 Real-Time Market Feed")
+
+market_data = fetch_market_data()
+
+if len(market_data) > 0:
+
+    market_df = pd.DataFrame(
+        market_data[-10:]
+    )
+
+    st.dataframe(
+        market_df,
+        use_container_width=True
+    )
+
+# ---------------- BUY SECTION ---------------- #
 
 st.subheader("💹 Buy Stocks")
 
-investment_amount = st.number_input(
-    "Investment Amount ($)",
+investment = st.number_input(
+
+    "Investment Amount",
+
     min_value=1,
+
     max_value=max(
         1,
         int(st.session_state.wallet)
     ),
+
     step=1
+
 )
 
-buy_col1, buy_col2 = st.columns([3,1])
+if st.button("🛒 Buy Stock"):
 
-with buy_col1:
+    quantity = (
+        investment
+        / current_price
+    )
 
-    if st.button(
-        "🛒 Buy Now",
-        use_container_width=True
-    ):
+    st.session_state.wallet -= (
+        investment
+    )
 
-        if investment_amount <= st.session_state.wallet:
+    trade = {
 
-            quantity = (
-                investment_amount
-                / current_price
-            )
+        "Asset": selected_stock,
 
-            st.session_state.wallet -= (
-                investment_amount
-            )
+        "Symbol": symbol,
 
-            trade = {
-                "Asset": selected_stock,
-                "Symbol": symbol,
-                "Buy Price": current_price,
-                "Investment": investment_amount,
-                "Quantity": quantity
-            }
+        "Buy Price": current_price,
 
-            st.session_state.transactions.append(
-                trade
-            )
+        "Investment": investment,
 
-            memory["wallet"] = (
-                st.session_state.wallet
-            )
+        "Quantity": quantity
 
-            memory["transactions"] = (
-                st.session_state.transactions
-            )
+    }
 
-            save_memory(memory)
+    st.session_state.transactions.append(
+        trade
+    )
 
-            st.success(
-                "Stock Purchased Successfully"
-            )
+    memory["wallet"] = (
+        st.session_state.wallet
+    )
 
-            st.rerun()
+    memory["transactions"] = (
+        st.session_state.transactions
+    )
+
+    save_memory(memory)
+
+    st.success(
+        "Stock Purchased Successfully"
+    )
+
+    st.rerun()
 
 # ---------------- PORTFOLIO ---------------- #
 
@@ -238,9 +381,7 @@ st.subheader("📊 Live Portfolio")
 
 portfolio_value = 0
 
-initial_investment_total = 0
-
-updated_transactions = []
+initial_investment = 0
 
 for index, trade in enumerate(
     st.session_state.transactions
@@ -272,17 +413,17 @@ for index, trade in enumerate(
         - trade["Investment"]
     )
 
-    portfolio_value += current_value
+    portfolio_value += (
+        current_value
+    )
 
-    initial_investment_total += (
+    initial_investment += (
         trade["Investment"]
     )
 
-    # ---------------- PORTFOLIO CARD ---------------- #
+    c1, c2 = st.columns([5,1])
 
-    card_col1, card_col2 = st.columns([5,1])
-
-    with card_col1:
+    with c1:
 
         st.markdown(f"""
         <div style="
@@ -298,19 +439,18 @@ for index, trade in enumerate(
         </h3>
 
         <p style="color:#9ca3af;">
-        Buy Price: ${round(trade['Buy Price'],2)}
+        Buy Price:
+        ${round(trade['Buy Price'],2)}
         </p>
 
         <p style="color:#9ca3af;">
-        Current Price: ${round(latest_price,2)}
-        </p>
-
-        <p style="color:#9ca3af;">
-        Investment: ${round(trade['Investment'],2)}
+        Current Price:
+        ${round(latest_price,2)}
         </p>
 
         <p style="color:#00d4aa;">
-        Current Value: ${round(current_value,2)}
+        Current Value:
+        ${round(current_value,2)}
         </p>
 
         <p style="
@@ -328,29 +468,25 @@ for index, trade in enumerate(
         </div>
         """, unsafe_allow_html=True)
 
-    with card_col2:
+    with c2:
 
         st.write("")
         st.write("")
         st.write("")
 
         if st.button(
-            f"💰 Sell",
-            key=f"sell_{index}",
-            use_container_width=True
+            "💰 Sell",
+            key=f"sell_{index}"
         ):
 
-            # ADD CURRENT VALUE BACK
             st.session_state.wallet += (
                 current_value
             )
 
-            # REMOVE STOCK
             st.session_state.transactions.pop(
                 index
             )
 
-            # SAVE MEMORY
             memory["wallet"] = (
                 st.session_state.wallet
             )
@@ -367,47 +503,7 @@ for index, trade in enumerate(
 
             st.rerun()
 
-    updated_transactions.append({
-        "Asset": trade["Asset"],
-        "Buy Price": round(
-            trade["Buy Price"],2
-        ),
-        "Current Price": round(
-            latest_price,2
-        ),
-        "Investment": round(
-            trade["Investment"],2
-        ),
-        "Current Value": round(
-            current_value,2
-        ),
-        "Profit/Loss %": round(
-            pnl_percent,2
-        ),
-        "Profit/Loss Amount": round(
-            profit_amount,2
-        )
-    })
-
-# ---------------- LIVE METRICS ---------------- #
-
-live_wallet = (
-    st.session_state.wallet
-)
-
-total_profit_loss = (
-    portfolio_value
-    - initial_investment_total
-)
-
-profit_percent = 0
-
-if initial_investment_total > 0:
-
-    profit_percent = (
-        total_profit_loss
-        / initial_investment_total
-    ) * 100
+# ---------------- LIVE STATS ---------------- #
 
 metric1, metric2, metric3 = st.columns(3)
 
@@ -427,74 +523,145 @@ with metric2:
 
 with metric3:
 
+    total_profit = (
+        portfolio_value
+        - initial_investment
+    )
+
     st.metric(
         "📊 Total Profit/Loss",
-        f"{round(profit_percent,2)}%"
+        f"${round(total_profit,2)}"
     )
 
 # ---------------- AI PREDICTION ---------------- #
 
 st.subheader("🤖 AI Prediction")
 
-model, scaled_data = train_model(df)
-
-predicted_price = (
-    current_price * 1.02
+predicted_price = predict_stock_price(
+    price_percent,
+    volume
 )
 
-prediction_percent = (
-    (predicted_price - current_price)
-    / current_price
-) * 100
+if predicted_price:
 
-st.metric(
-    "Predicted Next Price",
-    f"${round(predicted_price,2)}",
-    f"{round(prediction_percent,2)}%"
-)
+    prediction_percent = (
+        (
+            predicted_price
+            - current_price
+        )
+        / current_price
+    ) * 100
+
+    prediction_color = (
+        "green"
+        if prediction_percent >= 0
+        else "red"
+    )
+
+    st.markdown(f"""
+    <div style="
+        background:#111827;
+        padding:25px;
+        border-radius:18px;
+        border:1px solid #30363d;
+    ">
+
+    <h2 style="color:white;">
+    AI Predicted Price
+    </h2>
+
+    <h1 style="
+        color:#00d4aa;
+        font-size:48px;
+    ">
+    ${round(predicted_price,2)}
+    </h1>
+
+    <h3 style="
+        color:{prediction_color};
+    ">
+    {round(prediction_percent,2)}%
+    </h3>
+
+    </div>
+    """, unsafe_allow_html=True)
+
+else:
+
+    st.warning(
+        "AI model is training..."
+    )
 
 # ---------------- CHATBOT ---------------- #
 
-st.subheader("💬 AI Trading Chatbot")
+st.markdown("""
+<div style="
+    background:#111827;
+    padding:25px;
+    border-radius:18px;
+    border:1px solid #30363d;
+    margin-top:30px;
+">
 
-# SHOW ONLY REAL CHAT MESSAGES
-if len(st.session_state.messages) > 0:
+<h1 style="
+    color:white;
+    margin-bottom:25px;
+">
+💬 AI Trading Chatbot
+</h1>
 
-    for message in st.session_state.messages:
+</div>
+""", unsafe_allow_html=True)
 
-        with st.chat_message(
-            message["role"]
-        ):
-
-            st.write(
-                message["content"]
-            )
-
-# USER INPUT
+# CHAT INPUT
 user_input = st.chat_input(
-    "Ask trading-related questions..."
+    placeholder="Ask trading-related questions..."
 )
 
+# USER MESSAGE
 if user_input:
 
-    # USER MESSAGE
     st.session_state.messages.append({
+
         "role": "user",
+
         "content": user_input
+
     })
 
     # AI RESPONSE
-    response = ask_bot(user_input)
+    response = ask_bot(
+        user_input
+    )
 
     st.session_state.messages.append({
+
         "role": "assistant",
+
         "content": response
+
     })
+
+    # SAVE MEMORY
+    memory["messages"] = (
+        st.session_state.messages
+    )
+
+    save_memory(memory)
 
     st.rerun()
 
+# DISPLAY CHAT
+for msg in st.session_state.messages:
+
+    with st.chat_message(msg["role"]):
+
+        st.write(
+            msg["content"]
+        )
+
 # ---------------- AUTO REFRESH ---------------- #
 
-time.sleep(5)
+time.sleep(10)
 
 st.rerun()
