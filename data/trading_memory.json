@@ -1,13 +1,5 @@
 {
-    "wallet": 400,
-    "transactions": [
-        {
-            "Asset": "NVIDIA",
-            "Symbol": "NVDA",
-            "Buy Price": 211.8000030517578,
-            "Investment": 400,
-            "Quantity": 1.888574099322612
-        }
-    ],
+    "wallet": 802.209628238125,
+    "transactions": [],
     "messages": []
 }
