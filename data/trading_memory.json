@@ -1,5 +1,13 @@
 {
-    "wallet": 802.209628238125,
-    "transactions": [],
+    "wallet": 702.209628238125,
+    "transactions": [
+        {
+            "Asset": "Apple",
+            "Symbol": "AAPL",
+            "Buy Price": 299.239990234375,
+            "Investment": 100,
+            "Quantity": 0.33417993337613927
+        }
+    ],
     "messages": []
 }
