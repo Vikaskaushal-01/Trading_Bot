@@ -1,5 +1,8 @@
 {
-    "demo_wallet": 504.4108131711678,
-    "demo_transactions": [],
-    "messages": []
+  "cash": 504.4108131711678,
+  "deposited": 504.4108131711678,
+  "positions": {},
+  "history": [],
+  "watchlist": [],
+  "orders": []
 }

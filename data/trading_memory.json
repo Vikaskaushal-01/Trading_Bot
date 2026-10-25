@@ -1,13 +1,26 @@
 {
-    "wallet": 702.209628238125,
-    "transactions": [
-        {
-            "Asset": "Apple",
-            "Symbol": "AAPL",
-            "Buy Price": 299.239990234375,
-            "Investment": 100,
-            "Quantity": 0.33417993337613927
-        }
-    ],
-    "messages": []
+  "cash": 702.209628238125,
+  "deposited": 802.209628238125,
+  "positions": {
+    "AAPL": {
+      "name": "Apple",
+      "qty": 0.33417993337613927,
+      "cost": 100.0
+    }
+  },
+  "history": [
+    {
+      "time": "migrated",
+      "side": "BUY",
+      "symbol": "AAPL",
+      "name": "Apple",
+      "qty": 0.33417993337613927,
+      "price": 299.239990234375,
+      "amount": 100.0,
+      "fee": 0.0,
+      "pnl": null
+    }
+  ],
+  "watchlist": [],
+  "orders": []
 }
