@@ -1,4 +1,6 @@
-.env 
-trading_bot/ 
-__pycache__/ 
-*.pyc 
+.env
+trading_bot/
+__pycache__/
+*.pyc
+data/chat_history.json
+*.tmp
