@@ -570,3 +570,50 @@ def signals():
     with tabs[6]:
         st.dataframe(pd.DataFrame([{k_: v for k_, v in r.items() if k_ != "key"} for r in log[::-1]]),
                      hide_index=True, width="stretch", height=360)
+
+
+def chart(res, price, entry, tp_px, sl_px, params):
+    d = res["data"].iloc[-n_show:]
+    idx = local_index(d.index)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
+    fig.add_trace(go.Candlestick(x=idx, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"], name="Price",
+                                 increasing_line_color=GREEN, decreasing_line_color=RED), 1, 1)
+    for col, color, dash in [("EMA9", CYAN, None), ("EMA21", AMBER, None), ("EMA50", "#a78bfa", None),
+                             ("VWAP", "#e8edf7", "dot"), ("BB_upper", MUTED, "dash"), ("BB_lower", MUTED, "dash")]:
+        fig.add_trace(go.Scatter(x=idx, y=d[col], name=col.replace("_", " "), mode="lines",
+                                 line=dict(color=color, width=1.2, dash=dash)), 1, 1)
+    last = d.iloc[-1]
+    lo, hi = d["Low"].min(), d["High"].max()
+    for col, label in [("PDH", "Yesterday high"), ("PDL", "Yesterday low")]:
+        if pd.notna(last.get(col)) and lo - (hi - lo) * 0.2 < last[col] < hi + (hi - lo) * 0.2:
+            fig.add_hline(y=last[col], line=dict(color="#f472b6", width=1, dash="dot"), row=1, col=1,
+                          annotation_text=label, annotation_position="top left")
+    tr = res["trades"]
+    if not tr.empty:
+        tr = tr[tr["time"] >= d.index[0]]
+        for side, sym, color in [("BUY", "triangle-up", GREEN), ("SELL", "triangle-down", RED)]:
+            s = tr[tr["side"] == side]
+            if len(s):
+                fig.add_trace(go.Scatter(
+                    x=local_index(s["time"]), y=s["entry"], mode="markers", name=f"Past {side} ({len(s)})",
+                    marker=dict(symbol=sym, size=11, color=color, line=dict(color="#fff", width=1)),
+                    text=[f"{r} {p:+.2f} pts" for r, p in zip(s["result"], s["points"])],
+                    hovertemplate="%{text}<extra></extra>"), 1, 1)
+    fig.add_hline(y=price, line=dict(color="#e8edf7", width=1), row=1, col=1,
+                  annotation_text=f"Live {price:,.2f}", annotation_position="top right")
+    if entry is not None:
+        for y, label, color in [(entry, "Entry", CYAN), (tp_px, "TP", GREEN), (sl_px, "SL", RED)]:
+            if y is None:
+                continue
+            fig.add_hline(y=y, line=dict(color=color, width=1.4, dash="dash"), row=1, col=1,
+                          annotation_text=f"{label} {y:,.2f}", annotation_position="top right")
+    wf = res["walk_forward"]
+    wf = wf[wf.index >= d.index[0]]
+    if len(wf):
+        x = local_index(wf.index)
+        fig.add_trace(go.Scatter(x=x, y=wf["p_long"] * 100, name="BUY success %", line=dict(color=GREEN, width=1.4)), 2, 1)
+        fig.add_trace(go.Scatter(x=x, y=wf["p_short"] * 100, name="SELL success %", line=dict(color=RED, width=1.4)), 2, 1)
+        fig.add_hline(y=params.breakeven * 100, line=dict(color="#fff", width=1, dash="dot"), row=2, col=1)
+    fig.update_yaxes(title_text="%", row=2, col=1)
+    fig.update_layout(xaxis_rangeslider_visible=False, uirevision=f"{tv_symbol}{tf}")
+    st.plotly_chart(style_fig(fig, height=640), width="stretch", config={"displaylogo": False}, key="sc_chart")
