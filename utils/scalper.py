@@ -542,3 +542,49 @@ def build(raw: pd.DataFrame, p: ScalpParams, sess: MarketSession | None = None) 
         "base_long": float(yl[hist].mean()), "base_short": float(ys[hist].mean()), "n_hist": int(len(hist)),
         "models": models, "wf": wf, "cal": cal, "built_at": data.index[-1],
     }
+
+
+# ------------------------------------------------------------------ light part: score the live candle
+def score(raw: pd.DataFrame, model: dict, p: ScalpParams, use_last_bar: bool = False) -> dict:
+    """Decision for the current candle using a (possibly few minutes old) built model. Fast."""
+    sess, feats = model["sess"], model["feats"]
+    df = add_scalp_indicators(raw.tail(3000), sess)
+    q = len(df) - 1 if use_last_bar else len(df) - 2
+    row = df.iloc[q]
+    x = row[feats].to_numpy(dtype=float)[None, :]
+    if np.isnan(x).any():
+        raise ValueError("Indicators are still warming up for the latest candle — give it a minute.")
+    z = (x - model["mu"]) / model["sd"] * model["w"]
+    r = _knn(model["Zh"], model["yl"], model["ys"], model["pl"], model["ps"], z, p.k,
+             model["base_long"], model["base_short"])
+    ml_l, ml_s = model["models"]
+    r = _blend({k_: float(v[0]) for k_, v in r.items()},
+               float(_ml_prob(ml_l, x, model["base_long"])[0]), float(_ml_prob(ml_s, x, model["base_short"])[0]),
+               p.use_ml)
+    r = _apply_calibration(r, model["cal"])
+    ctx = _context(df.iloc[[q]], p).iloc[0].to_dict()
+    signal, why = decide(r, ctx, p)
+
+    # walk-forward decisions with the current filters (cheap: probabilities are already in the model)
+    data = model["data"]
+    wf = model["wf"]
+    if len(wf):
+        wctx = _context(data.loc[wf.index], p)
+        sig = [decide(rw, cw, p)[0] for rw, cw in zip(wf.to_dict("records"), wctx.to_dict("records"))]
+        wf = wf.assign(signal=sig)
+    else:
+        wf = wf.assign(signal=[])
+    trades = _replay_trades(data, wf, p)
+    tp_arr, sl_arr = trade_levels(df.iloc[[q]], p)
+    return {
+        "data": df, "features": feats, "q": q, "signal": signal, "why": why, **r, "ctx": ctx,
+        "tp_pts": float(tp_arr[0]), "sl_pts": float(sl_arr[0]),
+        "base_long": model["base_long"], "base_short": model["base_short"], "n_hist": model["n_hist"],
+        "walk_forward": wf, "trades": trades, "stats": trade_stats(trades, p),
+        "accuracy": accuracy(data, wf, p), "reasons": explain(row), "built_at": model["built_at"], "labelled": data,
+    }
+
+
+def analyze(raw: pd.DataFrame, p: ScalpParams, use_last_bar: bool = False, sess: MarketSession | None = None) -> dict:
+    """Build + score in one go (used by the optimizer and tests)."""
+    return score(raw, build(raw, p, sess), p, use_last_bar)
