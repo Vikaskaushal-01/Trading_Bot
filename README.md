@@ -11,6 +11,7 @@ machine-learning signals, technical analysis, strategy backtesting and an AI ass
 |---|---|
 | **Dashboard** | Net worth of both accounts, featured market cards with sparklines, top gainers/losers, full market table, **AI scanner** ranking every asset by composite score |
 | **Live / Demo Trading** | Candlestick/line charts with EMA 20/50, SMA 200, Bollinger, RSI, MACD and on-chart lines for cost basis, stops, targets, limit orders and the AI price target · **Market & Limit orders** · **risk panel**: stop-loss (default 2×ATR), take-profit by reward:risk, trailing stop, risk-per-trade position sizing, ½-Kelly check · AI signal card · technical rating · positions with exit-rule editor, allocation donut and risk checks · pending orders · trade history with trigger reasons + CSV · deposit / withdraw / reset · watchlist · any Yahoo Finance ticker · 15s live mode that keeps stops & limits monitored |
+| **Live Scalper** (opens first) | Persistent TradingView stream: price, bid/ask and live spread ticking every second, clock + candle countdown, tick sparkline · new BUY / SELL / WAIT at every candle close (or every 15/30 s, provisional) · BUY vs SELL success % from the most similar past setups, labelled by simulating your TP/SL/spread/max-hold on ~10,000 candles · targets in points or ATR × · filters: trend-only, trading hours, high-confidence (90% lower bound) · 26 inputs incl. 5m RSI, 15m trend, VWAP, today's & yesterday's high/low · walk-forward replay with equity curve · best-hours analysis · TP/SL optimizer · trade journal that follows your logged trades to TP/SL with live bid/ask · daily max-trades / loss / profit limits · sound + toast alerts · settings remembered between days |
 | **AI Lab** | Full model diagnostics: calibrated P(up) vs usual up-rate, reliability (out-of-sample ROC-AUC), 10/50/90% price targets, signal-consensus breakdown, probability history on price, returns by conviction bucket, calibration curve, out-of-sample trading of the signal, 53-feature dashboard with percentiles, historical analogs, one-click comparison of 5 models |
 | **Backtester** | SMA crossover, RSI mean reversion, MACD, Bollinger breakout, Donchian breakout and the **AI model** · stop-loss / take-profit / trailing stop with re-entry cooldown · CAGR, Sharpe, Sortino, Calmar, max drawdown, win rate, profit factor, avg win/loss, trade distribution |
 | **AI Assistant** | Groq-powered streaming chat grounded in your balances, holdings, live quotes and the focused asset's AI/technical signals; instant offline answers for balance/portfolio/movers; history persisted |
@@ -79,6 +80,10 @@ utils/
   portfolio.py         account engine: orders, stop-loss/take-profit/trailing, limit orders, P&L
   backtest.py          backtester with protective exits and trade statistics
   chatbot.py           Groq assistant + instant local answers
+  tv_feed.py           one-off TradingView candle download (+ Yahoo fallback)
+  tv_stream.py         persistent TradingView stream: ticks, bid/ask, candles
+  journal.py           scalp trade journal with live TP/SL tracking
+  scalper.py           intraday outcome labelling, k-NN success rates, walk-forward replay
   trading_view.py      shared trading terminal UI
   chat_view.py         reusable chat panel
   ui.py                CSS theme, components, Plotly charts
