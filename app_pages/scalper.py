@@ -303,3 +303,50 @@ def ticker():
 
 
 ticker()
+
+
+# ------------------------------------------------------------------ data + analysis
+@st.cache_resource(max_entries=8, show_spinner=False)
+def run_build(_df: pd.DataFrame, key: tuple, params: ScalpParams, sess: MarketSession) -> dict:
+    """Labels + models + replay. Rebuilt every 15 minutes or when a setting that changes the labels changes."""
+    return build(_df, params, sess)
+
+
+@st.cache_resource(max_entries=32, show_spinner=False)
+def run_score(_df: pd.DataFrame, _model: dict, key: tuple, params: ScalpParams, provisional: bool) -> dict:
+    return score(_df, _model, params, use_last_bar=provisional)
+
+
+def market_session() -> MarketSession:
+    return MarketSession.from_info(stream.info or {}, tv_symbol)
+
+
+def label_spread(live: float | None) -> float:
+    """Spread used for the labels: follows the live spread but ignores tiny flickers (avoids constant rebuilds)."""
+    if not auto_spread or live is None:
+        return manual_spread
+    key_ = f"sc_lab_spread_{tv_symbol}"
+    cur = st.session_state.get(key_)
+    if cur is None or abs(live - cur) > 0.15:
+        st.session_state[key_] = cur = round(live, 2)
+    return cur
+
+
+def get_candles() -> tuple[pd.DataFrame, str, bool]:
+    df, _ = stream.snapshot()
+    if stream.history_ready and len(df) > 300:
+        return df, "TradingView live stream", stream.healthy
+    if time.time() - stream.started < 25:
+        return pd.DataFrame(), "loading", False
+    feed = get_intraday(tv_symbol, TIMEFRAMES[tf], 5000, yf_ticker, int(time.time() // 60))
+    return feed["df"], feed["source"], feed["live"]
+
+
+def beep(side: str):
+    freq = 880 if side == "BUY" else 440
+    components.html(
+        f"<script>try{{const a=new (window.AudioContext||window.webkitAudioContext)();"
+        f"[0,0.25].forEach(t=>{{const o=a.createOscillator(),g=a.createGain();o.frequency.value={freq};"
+        f"o.connect(g);g.connect(a.destination);g.gain.setValueAtTime(0.25,a.currentTime+t);"
+        f"o.start(a.currentTime+t);o.stop(a.currentTime+t+0.18);}});}}catch(e){{}}</script>",
+        height=0)
