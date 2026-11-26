@@ -85,3 +85,46 @@ class MarketSession:
         sym = symbol.upper()
         us = any(s in sym for s in ("SPX", "SPY", "ES1", "US500", "NSX", "NAS", "NDX", "US100", "DJI", "US30", "DOW"))
         return cls(tz=tz, start_min=start, us_index=us)
+
+
+FEATURES = {
+    "dist_ema9": "Close vs EMA 9 (ATR units)",
+    "ema9_21": "EMA 9 vs EMA 21 — short-term trend",
+    "dist_ema50": "Close vs EMA 50",
+    "dist_ema200": "Close vs EMA 200",
+    "rsi": "RSI 14",
+    "rsi7": "RSI 7 (fast)",
+    "stoch_k": "Stochastic RSI %K",
+    "macd_hist": "MACD histogram",
+    "macd_slope": "MACD histogram change",
+    "bb_pct": "Bollinger %B",
+    "bb_width": "Bollinger band width (squeeze)",
+    "adx_dir": "ADX × direction (DI+ vs DI−)",
+    "range_pos": "Position in 20-candle high/low range",
+    "ret1": "Last candle return",
+    "ret5": "5-candle return",
+    "ret15": "15-candle return",
+    "ret60": "60-candle return",
+    "lower_wick": "Lower wick (buying pressure)",
+    "upper_wick": "Upper wick (selling pressure)",
+    "body": "Candle body (direction × size)",
+    "vol_regime": "ATR vs its 100-candle average",
+    "vwap_dist": "Close vs session VWAP",
+    "vol_z": "Volume z-score",
+    "htf5_rsi": "RSI 14 on 5-minute candles",
+    "htf15_trend": "Close vs EMA 20 on 15-minute candles",
+    "day_hi_dist": "Distance below today's high",
+    "day_lo_dist": "Distance above today's low",
+    "pdh_dist": "Close vs yesterday's high",
+    "pdl_dist": "Close vs yesterday's low",
+    "prev_close_dist": "Close vs yesterday's close (gap)",
+    "cash_open": "US cash market open (09:30–16:00 New York)",
+    "mins_cash": "Minutes since the 09:30 New York open",
+    "or_hi_dist": "Close vs opening-range high (09:30–09:45 NY)",
+    "or_lo_dist": "Close vs opening-range low (09:30–09:45 NY)",
+    "tod_sin": "Time of day in the market's time zone (sin)",
+    "tod_cos": "Time of day in the market's time zone (cos)",
+}
+
+AGG = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+US_ONLY = ("cash_open", "mins_cash", "or_hi_dist", "or_lo_dist")
