@@ -688,3 +688,45 @@ def _streak(mask: pd.Series) -> int:
         cur = cur + 1 if m else 0
         best = max(best, cur)
     return best
+
+
+def hourly_edge(data: pd.DataFrame, p: ScalpParams) -> pd.DataFrame:
+    """Average outcome of a blind BUY and SELL by hour of day (UTC) — shows when the market moves enough."""
+    d = data.dropna(subset=["long_pts", "short_pts"])
+    g = d.groupby(d.index.hour)
+    return pd.DataFrame({
+        "BUY win %": g["long_win"].mean() * 100, "SELL win %": g["short_win"].mean() * 100,
+        "BUY avg pts": g["long_pts"].mean(), "SELL avg pts": g["short_pts"].mean(),
+        "ATR": g["ATR"].mean(), "candles": g.size(),
+    })
+
+
+def optimize(raw: pd.DataFrame, base: ScalpParams, grid: list[dict], min_trades: int = 10,
+             sess: MarketSession | None = None) -> pd.DataFrame:
+    """Walk-forward results for each setting override in `grid` (e.g. {"tp": 4, "sl": 3} or {"hold": 5}).
+
+    Picking the setting with the best total on the same replay mostly picks noise: in tests on SPX 1m/3m the
+    top in-sample settings usually lost money afterwards. So the replay is split in two halves and settings are
+    ranked by the *worse* half — a setting only ranks high if it made money in both (`consistent`)."""
+    rows = []
+    for over in grid:
+        p = replace(base, **over)
+        res = analyze(raw, p, sess=sess)
+        s, tr, wf = res["stats"], res["trades"], res["walk_forward"]
+        if len(tr) and len(wf):
+            cut = wf.index[len(wf) // 2]
+            first, second = tr[tr["time"] < cut]["points"], tr[tr["time"] >= cut]["points"]
+        else:
+            first = second = pd.Series(dtype=float)
+        rows.append({**over, "break-even %": p.breakeven * 100, "trades": s.get("trades", 0),
+                     "win %": s.get("win_rate", np.nan) * 100 if s.get("trades") else np.nan,
+                     "net pts": s.get("net_points", 0.0), "1st half pts": float(first.sum()),
+                     "2nd half pts": float(second.sum()), "profit factor": s.get("profit_factor", np.nan),
+                     "max DD pts": s.get("max_dd_points", 0.0),
+                     "_halves_ok": len(first) >= min_trades // 2 and len(second) >= min_trades // 2})
+    out = pd.DataFrame(rows)
+    out["reliable"] = out["trades"] >= min_trades
+    out["consistent"] = out.pop("_halves_ok") & (out["1st half pts"] > 0) & (out["2nd half pts"] > 0)
+    out["_worst"] = out[["1st half pts", "2nd half pts"]].min(axis=1)
+    out = out.sort_values(["consistent", "reliable", "_worst", "net pts"], ascending=False)
+    return out.drop(columns="_worst").reset_index(drop=True)
