@@ -128,3 +128,109 @@ FEATURES = {
 
 AGG = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
 US_ONLY = ("cash_open", "mins_cash", "or_hi_dist", "or_lo_dist")
+
+
+def _base_minutes(index: pd.DatetimeIndex) -> int:
+    if len(index) < 3:
+        return 1
+    return max(1, int(pd.Series(index).diff().dt.total_seconds().median() // 60))
+
+
+def _htf(df: pd.DataFrame, rule: str, base: int) -> pd.DataFrame:
+    """Completed higher-timeframe candles, aligned so each base row only sees bars that had already closed."""
+    h = df.resample(rule, label="right", closed="left").agg(AGG).dropna(subset=["Close"])
+    h.index = h.index - pd.Timedelta(minutes=base)  # bar ending at L is known at the base row opening at L - base
+    return h
+
+
+def add_scalp_indicators(df: pd.DataFrame, sess: MarketSession | None = None) -> pd.DataFrame:
+    sess = sess or MarketSession()
+    df = df.copy()
+    o, h, l, c, v = (df[k] for k in ("Open", "High", "Low", "Close", "Volume"))
+    atr = ta.volatility.AverageTrueRange(h, l, c, window=14).average_true_range().replace(0, np.nan)
+    df["ATR"] = atr
+    for n in (9, 21, 50, 200):
+        df[f"EMA{n}"] = c.ewm(span=n, adjust=False).mean()
+    df["RSI"] = ta.momentum.RSIIndicator(c, window=14).rsi()
+    df["RSI7"] = ta.momentum.RSIIndicator(c, window=7).rsi()
+    df["StochK"] = ta.momentum.StochRSIIndicator(c).stochrsi_k() * 100
+    df["MACD_hist"] = ta.trend.MACD(c).macd_diff()
+    bb = ta.volatility.BollingerBands(c, window=20, window_dev=2)
+    df["BB_upper"], df["BB_lower"], df["BB_pct"] = bb.bollinger_hband(), bb.bollinger_lband(), bb.bollinger_pband()
+    adx = ta.trend.ADXIndicator(h, l, c, window=14)
+    df["ADX"], df["DI_pos"], df["DI_neg"] = adx.adx(), adx.adx_pos(), adx.adx_neg()
+    df["HH20"], df["LL20"] = h.rolling(20).max(), l.rolling(20).min()
+
+    # ---- the market's own trading day (e.g. 18:00 New York for SPREADEX:SPX)
+    local = df.index.tz_localize("UTC").tz_convert(sess.tz)
+    day = (local - pd.Timedelta(minutes=sess.start_min)).tz_localize(None).normalize()
+    day = pd.Index(day, name="day")
+    tp_ = (h + l + c) / 3
+    w = v if (v > 0).any() else pd.Series(1.0, index=df.index)
+    df["VWAP"] = (tp_ * w).groupby(day).cumsum().to_numpy() / w.groupby(day).cumsum().to_numpy()
+    df["DayHigh"] = h.groupby(day).cummax().to_numpy()
+    df["DayLow"] = l.groupby(day).cummin().to_numpy()
+    daily = df.groupby(day).agg(PDH=("High", "max"), PDL=("Low", "min"), PDC=("Close", "last")).shift(1)
+    for col in ("PDH", "PDL", "PDC"):
+        df[col] = daily[col].reindex(day).to_numpy()
+
+    base = _base_minutes(df.index)
+    h5, h15 = _htf(df, "5min", base), _htf(df, "15min", base)
+    h5["RSI5"] = ta.momentum.RSIIndicator(h5["Close"], window=14).rsi()
+    h15["EMA20_15"] = h15["Close"].ewm(span=20, adjust=False).mean()
+    df["RSI5"] = h5["RSI5"].reindex(df.index, method="ffill")
+    df["EMA20_15"] = h15["EMA20_15"].reindex(df.index, method="ffill")
+
+    # ---- US cash session (09:30–16:00 New York) and its opening range
+    ny = df.index.tz_localize("UTC").tz_convert(NY)
+    ny_min = pd.Series(ny.hour * 60 + ny.minute, index=df.index)
+    weekday = pd.Series(ny.dayofweek < 5, index=df.index)
+    df["CashOpen"] = ((ny_min >= 570) & (ny_min < 960) & weekday).astype(float)
+    ny_day = pd.Index(ny.tz_localize(None).normalize(), name="nyday")
+    in_or = (ny_min >= 570) & (ny_min < 585)
+    or_hi = h.where(in_or).groupby(ny_day).transform("max").to_numpy()
+    or_lo = l.where(in_or).groupby(ny_day).transform("min").to_numpy()
+    formed = (ny_min >= 585).to_numpy()
+    df["ORHigh"] = np.where(formed, or_hi, np.nan)
+    df["ORLow"] = np.where(formed, or_lo, np.nan)
+
+    f = pd.DataFrame(index=df.index)
+    f["dist_ema9"] = (c - df["EMA9"]) / atr
+    f["ema9_21"] = (df["EMA9"] - df["EMA21"]) / atr
+    f["dist_ema50"] = (c - df["EMA50"]) / atr
+    f["dist_ema200"] = (c - df["EMA200"]) / atr
+    f["rsi"] = df["RSI"] / 100
+    f["rsi7"] = df["RSI7"] / 100
+    f["stoch_k"] = df["StochK"] / 100
+    f["macd_hist"] = df["MACD_hist"] / atr
+    f["macd_slope"] = df["MACD_hist"].diff() / atr
+    f["bb_pct"] = df["BB_pct"]
+    f["bb_width"] = (df["BB_upper"] - df["BB_lower"]) / atr
+    f["adx_dir"] = df["ADX"] / 100 * np.sign(df["DI_pos"] - df["DI_neg"])
+    f["range_pos"] = (c - df["LL20"]) / (df["HH20"] - df["LL20"]).replace(0, np.nan)
+    f["ret1"] = c.diff() / atr
+    f["ret5"] = c.diff(5) / atr
+    f["ret15"] = c.diff(15) / atr
+    f["ret60"] = c.diff(60) / atr
+    body_lo, body_hi = np.minimum(o, c), np.maximum(o, c)
+    f["lower_wick"] = (body_lo - l) / atr
+    f["upper_wick"] = (h - body_hi) / atr
+    f["body"] = (c - o) / atr
+    f["vol_regime"] = atr / atr.rolling(100).mean()
+    f["vwap_dist"] = (c - df["VWAP"]) / atr
+    f["vol_z"] = ((v - v.rolling(50).mean()) / v.rolling(50).std()).fillna(0) if (v > 0).any() else 0.0
+    f["htf5_rsi"] = df["RSI5"] / 100
+    f["htf15_trend"] = (c - df["EMA20_15"]) / atr
+    f["day_hi_dist"] = (c - df["DayHigh"]) / atr
+    f["day_lo_dist"] = (c - df["DayLow"]) / atr
+    f["pdh_dist"] = (c - df["PDH"]) / atr
+    f["pdl_dist"] = (c - df["PDL"]) / atr
+    f["prev_close_dist"] = (c - df["PDC"]) / atr
+    f["cash_open"] = df["CashOpen"]
+    f["mins_cash"] = ((ny_min - 570).clip(-120, 450) / 450).where(weekday, -120 / 450)
+    f["or_hi_dist"] = ((c - df["ORHigh"]) / atr).fillna(0)
+    f["or_lo_dist"] = ((c - df["ORLow"]) / atr).fillna(0)
+    loc_min = local.hour * 60 + local.minute
+    f["tod_sin"] = np.sin(2 * np.pi * loc_min / 1440)
+    f["tod_cos"] = np.cos(2 * np.pi * loc_min / 1440)
+    return df.join(f.clip(-10, 10))
