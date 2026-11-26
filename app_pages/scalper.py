@@ -731,3 +731,42 @@ def optimizer(df, params):
             st.warning("No setting made money in both halves of the replay with enough trades. With these filters "
                        "the honest answer is: don't scalp this market right now, try the 3m timeframe with the trend "
                        "filter, or try other hours.")
+
+
+def journal_tab(trades_all):
+    mine = [t for t in trades_all if t["symbol"] == tv_symbol]
+    if not mine:
+        st.info("No trades logged yet. When you place a trade at your broker, press **📒 I took a BUY / SELL** so "
+                "the journal can follow it to TP / SL and enforce your daily limits.")
+        return
+    done = [t for t in mine if t["status"] != "open"]
+    if done:
+        pts = pd.Series([t["points"] for t in done])
+        kpis([
+            {"icon": "📒", "label": "Closed trades", "value": f"{len(done)}"},
+            {"icon": "✅", "label": "Win rate", "value": pct(float((pts > 0).mean()))},
+            {"icon": "💵", "label": "Total", "value": usd(sum(t["usd"] for t in done), 2),
+             "delta": f"{pts.sum():+.2f} pts", "delta_value": float(pts.sum())},
+        ])
+    tbl = pd.DataFrame([{
+        "Opened": datetime.fromtimestamp(t["opened"], TZ).strftime("%d %b %H:%M:%S"), "Side": t["side"],
+        "Lot": t["lot"], "Entry": t["entry"], "TP": t["tp"], "SL": t["sl"], "Status": t["status"],
+        "Exit": t["exit"], "Points": t["points"], "$": t["usd"],
+        "Signal success %": round(t["signal_success"] * 100, 1) if t.get("signal_success") else None,
+    } for t in mine[::-1]])
+    st.dataframe(tbl, hide_index=True, width="stretch", height=320)
+    st.download_button("⬇ Download journal (CSV)", tbl.to_csv(index=False), "scalp_journal.csv", "text/csv")
+
+
+signals()
+
+st.caption(
+    "How the odds are made: every past candle is labelled by simulating a BUY and a SELL with your TP, SL, spread "
+    "and max hold (if TP and SL fall in the same candle, the stop counts first). The current candle is compared "
+    "with the most similar past candles across up to 26 inputs (EMA 9/21/50/200, VWAP, RSI, 5-minute RSI, 15-minute "
+    "trend, Stoch RSI, MACD, Bollinger, ADX/DI, range position, today's and yesterday's high/low, candle wicks, "
+    "returns, volatility regime, volume, time of day), and the success rate is shrunk toward the usual rate when "
+    "evidence is thin. Prices stream from TradingView's chart websocket as a logged-out viewer — personal research "
+    "use only. The app never places orders."
+)
+disclaimer()
