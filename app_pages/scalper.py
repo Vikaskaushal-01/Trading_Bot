@@ -617,3 +617,76 @@ def chart(res, price, entry, tp_px, sl_px, params):
     fig.update_yaxes(title_text="%", row=2, col=1)
     fig.update_layout(xaxis_rangeslider_visible=False, uirevision=f"{tv_symbol}{tf}")
     st.plotly_chart(style_fig(fig, height=640), width="stretch", config={"displaylogo": False}, key="sc_chart")
+
+
+def replay(res, params):
+    acc = res["accuracy"]
+    rel, rel_txt = reliability_label(acc)
+    st.markdown(f"**Accuracy check — {rel}.** {rel_txt}")
+    if not acc["table"].empty:
+        st.caption("Each row: when the model said this range, how often did that trade really make money? Good "
+                   "percentages have 'actually won %' close to 'avg predicted %' and rising from top to bottom.")
+        st.dataframe(acc["table"].round(1), hide_index=True, width="stretch")
+    s = res["stats"]
+    st.caption(f"Walk-forward replay of the last {params.validate_frac:.0%} of history: each decision only used "
+               "candles whose outcome was already known, same filters, one trade at a time, spread included.")
+    if not s.get("trades"):
+        st.info("The signal never fired in the replay window with these settings — it found no setup that beat "
+                "break-even by your required edge. That's the bot staying out of a market with no clear edge. "
+                "Try the Optimizer tab, ATR targets, or a smaller required edge.")
+        return
+    ok = s["win_rate"] > params.breakeven and s["net_points"] > 0
+    kpis([
+        {"icon": "🧪", "label": "Trades", "value": f"{s['trades']}",
+         "delta": f"BUY {s['BUY_n']} · SELL {s['SELL_n']} · {s['per_day']:.1f}/day", "delta_value": 0},
+        {"icon": "✅", "label": "Win rate", "value": pct(s["win_rate"]),
+         "delta": f"needs > {params.breakeven * 100:.1f}%", "delta_value": s["win_rate"] - params.breakeven},
+        {"icon": "📈", "label": "Net", "value": f"{s['net_points']:+.2f} pts",
+         "delta": f"{usd(money(s['net_points']), 2)} at your lot", "delta_value": s["net_points"]},
+        {"icon": "⚖️", "label": "Profit factor", "value": f"{s['profit_factor']:.2f}",
+         "delta": "> 1.0 = profitable", "delta_value": s["profit_factor"] - 1},
+        {"icon": "📉", "label": "Max drawdown", "value": f"{s['max_dd_points']:.2f} pts",
+         "delta": f"losing streak {s['worst_streak']} · winning {s['best_streak']}", "delta_value": -1},
+    ])
+    (st.success if ok else st.warning)(
+        "The signal made money after spread in the replay. Past results don't guarantee future ones." if ok else
+        "The signal **did not** beat break-even after spread in the replay. Treat the odds as weak evidence "
+        "and trade smaller — or not at all — until this turns positive.")
+    t = res["trades"].copy()
+    eq = go.Figure(go.Scatter(x=local_index(t["exit_time"]), y=t["points"].cumsum().map(money), mode="lines+markers",
+                              line=dict(color=GREEN if ok else RED, width=2), name="Equity $"))
+    eq.update_yaxes(title_text=f"$ at {lot:.2f} lot")
+    st.plotly_chart(style_fig(eq, height=260), width="stretch", key="sc_eq")
+    t["time"] = local_index(t["time"]).strftime("%d %b %H:%M")
+    t["exit_time"] = local_index(t["exit_time"]).strftime("%H:%M")
+    t["success_est"] = (t["success_est"] * 100).round(1)
+    t["$ at your lot"] = t["points"].map(money).round(3)
+    st.dataframe(t.iloc[::-1].rename(columns={"success_est": "est. success %"}), hide_index=True,
+                 width="stretch", height=280)
+
+
+def best_hours(res, params):
+    h = hourly_edge(res["labelled"], params)
+    if h.empty:
+        return
+    off = int(datetime.now(TZ).utcoffset().total_seconds() // 60)
+    h.index = [f"{((u * 60 + off) % 1440) // 60:02d}:{((u * 60 + off) % 60):02d}" for u in h.index]
+    h = h.sort_index()
+    st.caption(f"What a blind BUY or SELL with your TP/SL did, by hour ({tz_name}). Hours with a higher ATR move "
+               "enough to reach your target; quiet hours mostly pay spread. Use this to set Trading hours.")
+    fig = go.Figure()
+    fig.add_bar(x=h.index, y=h["BUY avg pts"], name="BUY avg pts", marker_color=GREEN)
+    fig.add_bar(x=h.index, y=h["SELL avg pts"], name="SELL avg pts", marker_color=RED)
+    fig.add_scatter(x=h.index, y=h["ATR"], name="ATR", yaxis="y2", line=dict(color=AMBER))
+    fig.update_layout(barmode="group", yaxis2=dict(overlaying="y", side="right", title="ATR", showgrid=False))
+    st.plotly_chart(style_fig(fig, height=320), width="stretch", key="sc_hours")
+    st.dataframe(h.round(2), width="stretch")
+
+
+def _apply_opt(over: dict):
+    if "hold" in over:
+        st.session_state["sc_hold_min"] = int(over["minutes"])
+    elif st.session_state.get("sc_mode") == "Points":
+        st.session_state["sc_tp"], st.session_state["sc_sl"] = float(over["tp"]), float(over["sl"])
+    else:
+        st.session_state["sc_tp_atr"], st.session_state["sc_sl_atr"] = float(over["tp"]), float(over["sl"])
