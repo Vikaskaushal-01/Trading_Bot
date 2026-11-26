@@ -15,10 +15,11 @@ st.set_page_config(
 inject_css()
 
 nav = st.navigation({
-    "Overview": [st.Page("app_pages/dashboard.py", title="Dashboard", icon=":material/space_dashboard:", default=True)],
+    "Overview": [st.Page("app_pages/dashboard.py", title="Dashboard", icon=":material/space_dashboard:", url_path="dashboard")],
     "Trade": [
         st.Page("app_pages/trading.py", title="Live Trading", icon=":material/candlestick_chart:", url_path="trading"),
         st.Page("app_pages/demo.py", title="Demo Trading", icon=":material/science:", url_path="demo"),
+        st.Page("app_pages/scalper.py", title="Live Scalper", icon=":material/bolt:", default=True),
     ],
     "Research": [
         st.Page("app_pages/ai_lab.py", title="AI Lab", icon=":material/psychology:", url_path="ai-lab"),
