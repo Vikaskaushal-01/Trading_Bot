@@ -558,7 +558,7 @@ def render(account_name: str):
     ])
 
     # ---- live price header (also keeps stops/limits monitored) ---- #
-    live = st.toggle("Live updates every 15s (prices, stops & limit orders)", value=False, key=f"live_{key}")
+    live = st.toggle("Live updates every 15s (prices, stops & limit orders)", value=True, key=f"live_{key}")
 
     @st.fragment(run_every=15 if live else None)
     def live_strip():
