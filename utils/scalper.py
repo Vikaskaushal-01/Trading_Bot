@@ -588,3 +588,103 @@ def score(raw: pd.DataFrame, model: dict, p: ScalpParams, use_last_bar: bool = F
 def analyze(raw: pd.DataFrame, p: ScalpParams, use_last_bar: bool = False, sess: MarketSession | None = None) -> dict:
     """Build + score in one go (used by the optimizer and tests)."""
     return score(raw, build(raw, p, sess), p, use_last_bar)
+
+
+# ------------------------------------------------------------------ evaluation
+def accuracy(data: pd.DataFrame, wf: pd.DataFrame, p: ScalpParams) -> dict:
+    """How trustworthy the percentages were in the walk-forward: calibration table and ROC-AUC per side."""
+    out = {"table": pd.DataFrame(), "auc_long": np.nan, "auc_short": np.nan}
+    if len(wf) < 100:
+        return out
+    rows = []
+    edges = [0, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 1.01]
+    for side, name in (("long", "BUY"), ("short", "SELL")):
+        prob = wf[f"raw_{side}"].to_numpy(float) if f"raw_{side}" in wf else wf[f"p_{side}"].to_numpy(float)
+        won = data.loc[wf.index, f"{side}_win"].to_numpy(float)
+        if len(np.unique(won)) == 2:
+            out[f"auc_{side}"] = float(roc_auc_score(won, prob))
+        b = np.digitize(prob, edges) - 1
+        for i in range(len(edges) - 1):
+            m = b == i
+            if m.sum() >= 15:
+                rows.append({"Side": name, "Bot said": f"{edges[i] * 100:.0f}–{min(edges[i + 1], 1) * 100:.0f}%",
+                             "avg predicted %": prob[m].mean() * 100, "actually won %": won[m].mean() * 100,
+                             "candles": int(m.sum())})
+    out["table"] = pd.DataFrame(rows)
+    return out
+
+
+def reliability_label(acc: dict) -> tuple[str, str]:
+    aucs = [a for a in (acc.get("auc_long"), acc.get("auc_short")) if a is not None and not np.isnan(a)]
+    if not aucs:
+        return "Unknown", "Not enough history yet to check the percentages."
+    a = float(np.mean(aucs))
+    if a >= 0.58:
+        return "Good", f"In the replay the percentages separated winners from losers well (AUC {a:.2f})."
+    if a >= 0.53:
+        return "Fair", f"The percentages were somewhat better than a coin flip in the replay (AUC {a:.2f})."
+    return "Weak", f"In the replay the percentages were barely better than a coin flip (AUC {a:.2f}) — be careful."
+
+
+def _replay_trades(data: pd.DataFrame, wf: pd.DataFrame, p: ScalpParams) -> pd.DataFrame:
+    """One position at a time: take each walk-forward signal only when flat."""
+    rows, busy_until = [], -1
+    pos = {t: i for i, t in enumerate(data.index)}
+    for t, row in wf.iterrows():
+        i = pos[t]
+        if row["signal"] == "WAIT" or i <= busy_until:
+            continue
+        side = "long" if row["signal"] == "BUY" else "short"
+        ex = int(data[f"{side}_exit"].iat[i])
+        if ex < 0:
+            continue
+        busy_until = ex
+        won = bool(data[f"{side}_win"].iat[i])
+        rows.append({
+            "time": t, "side": row["signal"], "entry": data["Close"].iat[i],
+            "success_est": row["p_long"] if side == "long" else row["p_short"],
+            "exit_time": data.index[ex], "points": float(data[f"{side}_pts"].iat[i]),
+            "result": "TP" if won else "",
+        })
+    df = pd.DataFrame(rows)
+    if len(df) and p.exit_mode == "time":
+        df["result"] = np.where(df["points"] > 0, "Win", "Loss")
+    elif len(df):  # anything that neither hit TP nor lost the full stop was a time exit
+        _, sl = trade_levels(data, p)
+        full_sl = np.array([sl[pos[t]] for t in df["time"]])
+        not_tp = df["result"] != "TP"
+        df.loc[not_tp & (df["points"] > -full_sl + 1e-9), "result"] = "Time"
+        df.loc[not_tp & (df["points"] <= -full_sl + 1e-9), "result"] = "SL"
+    return df
+
+
+def trade_stats(trades: pd.DataFrame, p: ScalpParams) -> dict:
+    if trades.empty:
+        return {"trades": 0, "breakeven": p.breakeven}
+    pts = trades["points"]
+    gains, losses = pts[pts > 0].sum(), -pts[pts < 0].sum()
+    eq = pts.cumsum()
+    days = pd.DatetimeIndex(trades["time"]).normalize()
+    out = {
+        "trades": len(trades), "win_rate": float((pts > 0).mean()), "tp_rate": float((trades["result"] == "TP").mean()),
+        "net_points": float(pts.sum()), "avg_points": float(pts.mean()),
+        "profit_factor": float(gains / losses) if losses else float("inf"),
+        "max_dd_points": float((eq.cummax() - eq).max()),
+        "days": int(days.nunique()), "per_day": float(len(trades) / max(1, days.nunique())),
+        "best_streak": _streak(pts > 0), "worst_streak": _streak(pts <= 0),
+        "breakeven": p.breakeven,
+    }
+    for side in ("BUY", "SELL"):
+        s = trades[trades["side"] == side]["points"]
+        out[f"{side}_n"] = len(s)
+        out[f"{side}_win"] = float((s > 0).mean()) if len(s) else float("nan")
+        out[f"{side}_net"] = float(s.sum())
+    return out
+
+
+def _streak(mask: pd.Series) -> int:
+    best = cur = 0
+    for m in mask:
+        cur = cur + 1 if m else 0
+        best = max(best, cur)
+    return best
