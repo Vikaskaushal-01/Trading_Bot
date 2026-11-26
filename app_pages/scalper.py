@@ -173,3 +173,47 @@ with st.container(border=True):
         st.caption("Daily limits count the trades you log in the journal below.")
 
 _save_settings()
+
+TZ = ZoneInfo(tz_name)
+res_min = int(TIMEFRAMES[tf])
+cadence = CADENCES[cadence_label]
+provisional = cadence is not None
+hold_candles = max(1, -(-int(hold_min) // res_min))
+hold_txt = f"{int(hold_min)} min"
+money = lambda pts: pts * lot * ppv  # noqa: E731
+
+
+def utc_session() -> tuple | None:
+    if not hours_on or h_start == h_end:
+        return None
+    off = int(datetime.now(TZ).utcoffset().total_seconds() // 60)
+    return ((h_start * 60 - off) % 1440, (h_end * 60 - off) % 1440)
+
+
+def local(ts) -> pd.Timestamp:
+    return pd.Timestamp(ts).tz_localize("UTC").tz_convert(tz_name)
+
+
+def local_index(idx) -> pd.DatetimeIndex:
+    return pd.DatetimeIndex(idx).tz_localize("UTC").tz_convert(tz_name).tz_localize(None)
+
+
+def pct(x) -> str:
+    return "—" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x * 100:.1f}%"
+
+
+def usd(x: float, d: int = 3) -> str:
+    return f"{'+' if x >= 0 else '−'}${abs(x):,.{d}f}"
+
+
+stream = get_stream(tv_symbol, TIMEFRAMES[tf])
+
+
+def live_quote() -> dict:
+    """Last price, bid, ask from the stream (None if not streaming)."""
+    q = stream.quote_snapshot()
+    bid, ask = q.get("bid"), q.get("ask")
+    # Show the bid/ask mid-price: some feeds (e.g. SPREADEX) update their "last" price less often than bid/ask.
+    mid = (bid + ask) / 2 if bid and ask else q.get("lp")
+    return {"lp": mid, "last": q.get("lp"), "bid": bid, "ask": ask, "spread": (ask - bid) if bid and ask else None,
+            "ch": q.get("ch"), "chp": q.get("chp"), "desc": q.get("description") or tv_symbol}
