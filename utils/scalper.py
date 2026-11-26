@@ -730,3 +730,45 @@ def optimize(raw: pd.DataFrame, base: ScalpParams, grid: list[dict], min_trades:
     out["_worst"] = out[["1st half pts", "2nd half pts"]].min(axis=1)
     out = out.sort_values(["consistent", "reliable", "_worst", "net pts"], ascending=False)
     return out.drop(columns="_worst").reset_index(drop=True)
+
+
+def explain(row: pd.Series) -> list[tuple[str, str, int]]:
+    """Human-readable read of the decision candle: (indicator, reading, +1 bullish / -1 bearish / 0)."""
+    out = []
+
+    def add(name, text, vote):
+        out.append((name, text, vote))
+
+    c = row["Close"]
+    add("EMA 9 / 21", f"{row['EMA9']:,.2f} / {row['EMA21']:,.2f}", 1 if row["EMA9"] > row["EMA21"] else -1)
+    add("EMA 50", f"price {'above' if c > row['EMA50'] else 'below'} {row['EMA50']:,.2f}", 1 if c > row["EMA50"] else -1)
+    add("EMA 200", f"price {'above' if c > row['EMA200'] else 'below'} {row['EMA200']:,.2f}", 1 if c > row["EMA200"] else -1)
+    add("15m trend (EMA 20)", f"price {'above' if c > row['EMA20_15'] else 'below'} {row['EMA20_15']:,.2f}",
+        1 if c > row["EMA20_15"] else -1)
+    add("VWAP (session)", f"price {'above' if c > row['VWAP'] else 'below'} {row['VWAP']:,.2f}", 1 if c > row["VWAP"] else -1)
+    rsi = row["RSI"]
+    add("RSI 14", f"{rsi:.1f}" + (" overbought" if rsi > 70 else " oversold" if rsi < 30 else ""),
+        -1 if rsi > 70 else 1 if rsi < 30 else (1 if rsi > 50 else -1))
+    add("RSI 7 (fast)", f"{row['RSI7']:.1f}", -1 if row["RSI7"] > 80 else 1 if row["RSI7"] < 20 else 0)
+    add("RSI 14 (5m)", f"{row['RSI5']:.1f}", -1 if row["RSI5"] > 70 else 1 if row["RSI5"] < 30 else 0)
+    sk = row["StochK"]
+    add("Stoch RSI %K", f"{sk:.0f}", -1 if sk > 80 else 1 if sk < 20 else 0)
+    add("MACD histogram", f"{row['MACD_hist']:+.3f} ({'rising' if row['macd_slope'] > 0 else 'falling'})",
+        1 if row["MACD_hist"] > 0 and row["macd_slope"] > 0 else -1 if row["MACD_hist"] < 0 and row["macd_slope"] < 0 else 0)
+    add("Bollinger %B", f"{row['BB_pct']:.2f} (width {row['bb_width']:.1f} ATR)",
+        -1 if row["BB_pct"] > 1 else 1 if row["BB_pct"] < 0 else 0)
+    trend = "trending" if row["ADX"] >= 20 else "ranging"
+    add("ADX 14", f"{row['ADX']:.1f} {trend}, DI+ {row['DI_pos']:.0f} / DI− {row['DI_neg']:.0f}",
+        (1 if row["DI_pos"] > row["DI_neg"] else -1) if row["ADX"] >= 20 else 0)
+    add("20-candle range", f"{row['range_pos'] * 100:.0f}% of {row['LL20']:,.2f}–{row['HH20']:,.2f}",
+        -1 if row["range_pos"] > 0.9 else 1 if row["range_pos"] < 0.1 else 0)
+    add("Today high / low", f"{row['DayHigh']:,.2f} / {row['DayLow']:,.2f}", 0)
+    if pd.notna(row.get("PDH")):
+        add("Yesterday high / low / close", f"{row['PDH']:,.2f} / {row['PDL']:,.2f} / {row['PDC']:,.2f}",
+            1 if c > row["PDC"] else -1)
+    add("US cash market", "open (09:30–16:00 NY)" if row["CashOpen"] else "closed — overnight / pre-market", 0)
+    if pd.notna(row.get("ORHigh")):
+        add("Opening range (09:30–09:45 NY)", f"{row['ORLow']:,.2f} – {row['ORHigh']:,.2f}",
+            1 if c > row["ORHigh"] else -1 if c < row["ORLow"] else 0)
+    add("ATR 14", f"{row['ATR']:.2f} pts ({row['vol_regime']:.2f}× normal)", 0)
+    return out
