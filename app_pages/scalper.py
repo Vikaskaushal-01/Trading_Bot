@@ -350,3 +350,223 @@ def beep(side: str):
         f"o.connect(g);g.connect(a.destination);g.gain.setValueAtTime(0.25,a.currentTime+t);"
         f"o.start(a.currentTime+t);o.stop(a.currentTime+t+0.18);}});}}catch(e){{}}</script>",
         height=0)
+
+
+@st.fragment(run_every=3 if live_on else None)
+def signals():
+    df, source, is_live = get_candles()
+    if df.empty:
+        st.info("⏳ Loading candle history from TradingView… (first load takes a few seconds)")
+        return
+    q = live_quote()
+    spread = label_spread(q["spread"])
+    params = ScalpParams(
+        tp=tp, sl=sl, spread=spread, horizon=int(horizon), k=k, min_edge=min_edge,
+        tp_mode="points" if mode == "Points" else "atr", trend_filter=trend_filter,
+        session=utc_session(), high_conf=high_conf,
+        exit_mode="time" if time_exit else "tp_sl", hold=hold_candles,
+        use_ml=use_ml, require_skill=require_skill,
+    )
+    sess = market_session()
+    bucket = int(time.time() // cadence) if provisional else df.index[-2]
+    try:
+        build_key = (tv_symbol, tf, params.label_key(), sess, int(time.time() // 900))
+        with st.spinner("Re-training on the latest candles… (every 15 min, a few seconds)"):
+            model = run_build(df, build_key, params, sess)
+        res = run_score(df, model, (build_key, bucket, len(df), params.decision_key()), params, provisional)
+    except ValueError as exc:
+        st.warning(str(exc))
+        return
+    data, qi = res["data"], res["q"]
+    bar_time = data.index[qi]
+    price = q["lp"] if q["lp"] is not None else float(df["Close"].iat[-1])
+    bid = q["bid"] if q["bid"] is not None else price
+    ask = q["ask"] if q["ask"] is not None else price + spread
+
+    # ---- daily risk limits from the journal
+    trades_all = journal.load()
+    today = journal.today_stats([t for t in trades_all if t["symbol"] == tv_symbol], TZ)
+    halt = ""
+    if max_trades and today["trades"] >= max_trades:
+        halt = f"You've taken {today['trades']} trades today (limit {max_trades})."
+    elif max_loss and today["usd"] <= -max_loss:
+        halt = f"Today's loss {usd(today['usd'], 2)} hit your limit of ${max_loss:,.2f}."
+    elif target and today["usd"] >= target:
+        halt = f"Today's profit {usd(today['usd'], 2)} reached your target of ${target:,.2f}. Well done — stop here."
+    signal = "WAIT" if halt else res["signal"]
+
+    # ---- log + alerts when the signal changes
+    log = st.session_state.setdefault("sc_log", [])
+    key_ = (tv_symbol, tf, str(bucket))
+    if not log or log[-1]["key"] != key_:
+        prev_sig = log[-1]["Signal"] if log else "WAIT"
+        log.append({"key": key_, "Time": datetime.now(TZ).strftime("%d %b %H:%M:%S"), "Market": f"{tv_symbol} {tf}",
+                    "Signal": signal, "Price": round(price, 2), "BUY success": pct(res["p_long"]),
+                    "SELL success": pct(res["p_short"]), "Why": halt or res["why"]})
+        del log[:-500]
+        if signal != "WAIT" and signal != prev_sig:
+            st.toast(f"{signal} {tv_symbol} @ {price:,.2f}", icon="🟢" if signal == "BUY" else "🔴")
+            if sound_on:
+                beep(signal)
+
+    st.caption(
+        f"{'🟢' if is_live else '🟡'} {source} · {len(df):,} candles of history · decision candle "
+        f"{local(bar_time):%H:%M} · analysed {datetime.now(TZ):%H:%M:%S} · spread used {spread:.2f} pts"
+    )
+    if not is_live:
+        st.error("⚠️ **Not live right now** — TradingView isn't streaming, so these candles may be delayed. "
+                 "Don't trade off this until the badge turns green again (it reconnects automatically).")
+
+    # ---- signal card + KPIs
+    tp_pts, sl_pts = res["tp_pts"], res["sl_pts"]
+    if time_exit:
+        entry = ask if signal == "BUY" else bid if signal == "SELL" else None
+        tp_px = sl_px = None
+    elif signal == "BUY":
+        entry, tp_px, sl_px = ask, ask + tp_pts, ask - sl_pts
+    elif signal == "SELL":
+        entry, tp_px, sl_px = bid, bid - tp_pts, bid + sl_pts
+    else:
+        entry = tp_px = sl_px = None
+    p_side = res["p_long"] if signal == "BUY" else res["p_short"]
+    lcb_side = res["lcb_long"] if signal == "BUY" else res["lcb_short"]
+    conf = "High" if lcb_side >= params.breakeven else "Medium"
+
+    rel, rel_txt = reliability_label(res["accuracy"])
+    need = (params.breakeven + params.min_edge) * 100
+    if signal in ("BUY", "SELL"):
+        when = (f"and close it at about <b>{(datetime.now(TZ) + pd.Timedelta(minutes=int(hold_min))):%H:%M}</b>"
+                if time_exit else f"with TP <b>{tp_px:,.2f}</b> and SL <b>{sl_px:,.2f}</b>")
+        answer = (f"👉 <b>{signal} now</b> at about <b>{entry:,.2f}</b> {when}. Real chance of profit "
+                  f"<b>{pct(p_side)}</b> (you need {need:.0f}%+).")
+        tone = GREEN if signal == "BUY" else RED
+    else:
+        answer = (f"👉 <b>Don't trade right now.</b> {halt or res['why']} Real chance of profit: BUY "
+                  f"<b>{pct(res['p_long'])}</b> · SELL <b>{pct(res['p_short'])}</b> — a signal needs {need:.0f}%+.")
+        tone = AMBER
+    st.markdown(
+        f'<div class="panel" style="border-left:5px solid {tone};margin-bottom:12px">'
+        f'<div style="font-size:18px;line-height:1.6">{answer}</div>'
+        f'<div class="muted" style="margin-top:6px">How accurate are these %? <b>{rel}</b> — {rel_txt} '
+        f'Why don\'t BUY + SELL add up to 100%? You pay the {spread:.2f}-point spread on every trade, so after small '
+        f'moves both sides lose. Next decision in {res_min * 60 - int(time.time()) % (res_min * 60)} s.</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns([1.15, 1])
+    with left:
+        cls = {"BUY": "BUY", "SELL": "SELL"}.get(signal, "HOLD")
+        label = {"BUY": "▲ BUY", "SELL": "▼ SELL"}.get(signal, "🛑 STOP FOR TODAY" if halt else "⏸ WAIT")
+        head = (f"⏳ <b>Provisional</b> — forming {tf} candle, re-decided every {cadence}s" if provisional
+                else f"Decided on the closed {tf} candle of {local(bar_time):%H:%M}")
+        if entry is not None and time_exit:
+            close_at = datetime.now(TZ) + pd.Timedelta(minutes=int(hold_min))
+            exp_side = res["exp_long"] if signal == "BUY" else res["exp_short"]
+            detail = (f"Entry ≈ <b>{entry:,.2f}</b> ({'ask' if signal == 'BUY' else 'bid'}) · "
+                      f"close at ≈ <b>{close_at:%H:%M:%S}</b> (after {hold_txt})<br>"
+                      f"Chance of profit at close <b>{pct(p_side)}</b> · average result {exp_side:+.2f} pts "
+                      f"({usd(money(exp_side))}) · confidence <b>{conf}</b>")
+        elif entry is not None:
+            detail = (f"Entry ≈ <b>{entry:,.2f}</b> ({'ask' if signal == 'BUY' else 'bid'}) · "
+                      f"TP <b style='color:{GREEN}'>{tp_px:,.2f}</b> · SL <b style='color:{RED}'>{sl_px:,.2f}</b><br>"
+                      f"Win {usd(money(tp_pts))} / lose {usd(-money(sl_pts))} at {lot:.2f} lot · "
+                      f"success {pct(p_side)} · confidence <b>{conf}</b>")
+        else:
+            detail = halt or res["why"]
+
+        def bar(name, p_, exp_, color):
+            be = params.breakeven * 100
+            return (
+                f'<div style="margin-top:12px"><div style="display:flex;justify-content:space-between">'
+                f'<span style="font-weight:700;color:{color}">{name}</span>'
+                f'<span class="muted">{"profit after " + hold_txt if time_exit else "success"} '
+                f'<b style="color:#e8edf7">{p_ * 100:.1f}%</b> · avg {exp_:+.2f} pts '
+                f'({usd(money(exp_))})</span></div>'
+                f'<div style="position:relative;height:10px;border-radius:99px;background:#1a2336;margin-top:6px">'
+                f'<div style="width:{max(2, min(100, p_ * 100))}%;height:100%;border-radius:99px;background:{color}"></div>'
+                f'<i style="position:absolute;left:{be}%;top:-4px;width:2px;height:18px;background:#fff"></i>'
+                f'<i style="position:absolute;left:{min(99, be + params.min_edge * 100)}%;top:-4px;width:2px;'
+                f'height:18px;background:{AMBER}"></i></div></div>'
+            )
+
+        st.markdown(
+            f'<div class="panel"><div class="muted">{head} · {tz_name}</div>'
+            f'<div style="margin:10px 0"><span class="signal {cls}">{label}</span></div>'
+            f'<div style="color:#e8edf7;line-height:1.6">{detail}</div>'
+            f'{bar("BUY", res["p_long"], res["exp_long"], GREEN)}{bar("SELL", res["p_short"], res["exp_short"], RED)}'
+            f'<div class="muted" style="margin-top:10px">White = break-even {params.breakeven * 100:.1f}% · '
+            f'amber = needed for a signal ({(params.breakeven + params.min_edge) * 100:.1f}%). '
+            f'From the {params.k} most similar of {res["n_hist"]:,} past candles. Usual rates: BUY '
+            f'{pct(res["base_long"])}, SELL {pct(res["base_short"])}.</div></div>',
+            unsafe_allow_html=True,
+        )
+        b1, b2 = st.columns(2)
+        for col, side in ((b1, "BUY"), (b2, "SELL")):
+            px = ask if side == "BUY" else bid
+            if time_exit:
+                tpx = slx = None
+            else:
+                tpx = px + tp_pts if side == "BUY" else px - tp_pts
+                slx = px - sl_pts if side == "BUY" else px + sl_pts
+            if col.button(f"📒 I took a {side} @ {px:,.2f}", key=f"take_{side}", width="stretch",
+                          type="primary" if side == signal else "secondary",
+                          help="Log the trade you just placed at your broker; the journal tracks it live "
+                               + (f"and closes it after {hold_txt}." if time_exit else "to TP / SL.")):
+                journal.open_trade(tv_symbol, side, px, tpx, slx, lot, ppv,
+                                   res["p_long"] if side == "BUY" else res["p_short"],
+                                   close_after=int(hold_min) * 60 if time_exit else None)
+                st.toast(f"Logged {side} @ {px:,.2f}")
+    with right:
+        trend = "Up" if res["ctx"]["trend_up"] else "Down" if res["ctx"]["trend_down"] else "Mixed"
+        kpis([
+            {"icon": "🟢", "label": f"BUY profit after {hold_txt}" if time_exit else "BUY success", "value": pct(res["p_long"]),
+             "delta": f"model says {res['raw_long'] * 100:.0f}%" + ("" if rel in ("Good", "Fair") else " (not proven)")
+                      + f" · avg {res['exp_long']:+.2f} pts", "delta_value": res["exp_long"]},
+            {"icon": "🔴", "label": f"SELL profit after {hold_txt}" if time_exit else "SELL success", "value": pct(res["p_short"]),
+             "delta": f"model says {res['raw_short'] * 100:.0f}%" + ("" if rel in ("Good", "Fair") else " (not proven)")
+                      + f" · avg {res['exp_short']:+.2f} pts", "delta_value": res["exp_short"]},
+            {"icon": "⏳", "label": "Exit", "value": f"after {hold_txt}", "delta": "needs > 50% and avg > 0",
+             "delta_value": 0} if time_exit else
+            {"icon": "🎯", "label": "TP / SL now", "value": f"{tp_pts:.2f} / {sl_pts:.2f}",
+             "delta": f"break-even {params.breakeven * 100:.1f}%", "delta_value": 0},
+            {"icon": "🌊", "label": "ATR (volatility)", "value": f"{data['ATR'].iat[qi]:.2f} pts",
+             "delta": f"{data['vol_regime'].iat[qi]:.2f}× normal", "delta_value": data["vol_regime"].iat[qi] - 1},
+            {"icon": "📒", "label": "Today (journal)", "value": usd(today["usd"], 2),
+             "delta": f"{today['closed']} closed · win {pct(today['win_rate'])}", "delta_value": today["usd"]},
+            {"icon": "🧭", "label": "Trend", "value": trend, "delta": "EMA 200 + 15m EMA 20",
+             "delta_value": {"Up": 1, "Down": -1}.get(trend, 0)},
+        ])
+
+    tabs = st.tabs(["📈 Chart", "🔎 Indicators", "🧪 Did it work?", "🕐 Best hours", "⚙️ Optimizer",
+                    "📒 Journal", "📜 Signal log"])
+    with tabs[0]:
+        chart(res, price, entry, tp_px, sl_px, params)
+    with tabs[1]:
+        est = pd.DataFrame([
+            {"Estimate": "Similar past setups (k-NN)", "BUY %": res["knn_long"] * 100, "SELL %": res["knn_short"] * 100},
+            {"Estimate": "ML model (gradient boosting)" + ("" if use_ml else " — off"),
+             "BUY %": res["ml_long"] * 100, "SELL %": res["ml_short"] * 100},
+            {"Estimate": "Combined model estimate", "BUY %": res["raw_long"] * 100, "SELL %": res["raw_short"] * 100},
+            {"Estimate": "✅ Accuracy-corrected (shown above)", "BUY %": res["p_long"] * 100,
+             "SELL %": res["p_short"] * 100},
+        ]).round(1)
+        st.markdown("**How the percentage is made**")
+        st.dataframe(est, hide_index=True, width="stretch")
+        st.caption("Accuracy-corrected = what actually happened in the replay when the model said that number. "
+                   f"Market day: {sess.tz}, starts {sess.start_min // 60:02d}:{sess.start_min % 60:02d} local"
+                   + (" · US cash-session inputs on" if sess.us_index else "") + ".")
+        rows = [{"Indicator": n, "Reading": r, "Bias": "🟢 bullish" if v > 0 else "🔴 bearish" if v < 0 else "⚪ neutral"}
+                for n, r, v in res["reasons"]]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.caption(f"The odds use {len(res['features'])} inputs: " + ", ".join(res["features"]) + ".")
+    with tabs[2]:
+        replay(res, params)
+    with tabs[3]:
+        best_hours(res, params)
+    with tabs[4]:
+        optimizer(df, params)
+    with tabs[5]:
+        journal_tab(trades_all)
+    with tabs[6]:
+        st.dataframe(pd.DataFrame([{k_: v for k_, v in r.items() if k_ != "key"} for r in log[::-1]]),
+                     hide_index=True, width="stretch", height=360)
