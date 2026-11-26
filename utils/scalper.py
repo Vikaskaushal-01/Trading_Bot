@@ -431,3 +431,52 @@ def _apply_calibration(r: dict, cal: dict) -> dict:
             r[f"p_{s_}"] = float(np.clip(r[f"p_{s_}"], P_MIN, P_MAX))
         r[f"auc_{s_}"] = cal.get(f"auc_{s_}", np.nan)
     return r
+
+
+def _context(data: pd.DataFrame, p: ScalpParams) -> pd.DataFrame:
+    """Per-row filter state: in trading hours, trend allows long / short."""
+    minutes = data.index.hour * 60 + data.index.minute
+    if p.session:
+        s, e = p.session
+        in_sess = (minutes >= s) & (minutes < e) if s < e else (minutes >= s) | (minutes < e)
+    else:
+        in_sess = np.ones(len(data), dtype=bool)
+    up = (data["Close"] > data["EMA200"]) & (data["htf15_trend"] > 0)
+    down = (data["Close"] < data["EMA200"]) & (data["htf15_trend"] < 0)
+    return pd.DataFrame({"in_session": np.asarray(in_sess), "trend_up": up.to_numpy(), "trend_down": down.to_numpy()},
+                        index=data.index)
+
+
+def decide(r: dict, ctx: dict, p: ScalpParams) -> tuple[str, str]:
+    """Signal and a one-line reason."""
+    if not ctx["in_session"]:
+        return "WAIT", "Outside your trading hours."
+    need = p.breakeven + p.min_edge
+
+    def skilled(side):
+        auc = r.get(f"auc_{side}", np.nan)
+        return not p.require_skill or (auc is not None and not np.isnan(auc) and auc >= p.min_auc)
+
+    def ok(side):
+        confident = r[f"lcb_{side}"] >= p.breakeven or not p.high_conf
+        trend = ctx["trend_up"] if side == "long" else ctx["trend_down"]
+        return (r[f"p_{side}"] >= need and confident and r[f"exp_{side}"] > 0 and skilled(side)
+                and (trend or not p.trend_filter))
+
+    long_ok, short_ok = ok("long"), ok("short")
+    if long_ok and (not short_ok or r["exp_long"] >= r["exp_short"]):
+        return "BUY", "BUY has a good chance and similar past setups made money on average."
+    if short_ok:
+        return "SELL", "SELL has a good chance and similar past setups made money on average."
+    best = "long" if r["p_long"] >= r["p_short"] else "short"
+    name = "BUY" if best == "long" else "SELL"
+    if r[f"p_{best}"] >= need and not skilled(best):
+        return "WAIT", (f"{name} shows {r[f'p_{best}'] * 100:.0f}%, but the percentages haven't proved accurate "
+                        "recently, so no signal.")
+    if r[f"p_{best}"] >= need and r[f"exp_{best}"] <= 0:
+        return "WAIT", f"{name} wins often enough, but the losses were bigger than the wins on average."
+    if p.trend_filter and r[f"p_{best}"] >= need:
+        return "WAIT", f"{name} looks good but goes against the trend filter."
+    if p.high_conf and r[f"p_{best}"] >= need:
+        return "WAIT", "Odds look good but not with high confidence yet."
+    return "WAIT", f"Neither side reaches the {need * 100:.0f}% needed — no clear edge right now."
