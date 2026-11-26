@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 data/chat_history.json
 *.tmp
+data/scalp_journal.json
+data/scalper_settings.json
+data/*.backup.json
