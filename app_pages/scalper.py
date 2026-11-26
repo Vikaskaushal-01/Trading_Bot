@@ -690,3 +690,44 @@ def _apply_opt(over: dict):
         st.session_state["sc_tp"], st.session_state["sc_sl"] = float(over["tp"]), float(over["sl"])
     else:
         st.session_state["sc_tp_atr"], st.session_state["sc_sl_atr"] = float(over["tp"]), float(over["sl"])
+
+
+def optimizer(df, params):
+    st.caption("Replays the signal walk-forward for each setting and ranks them by net result, needing at least "
+               "10 trades to count as reliable. Re-run it every few days — the best setting drifts, and the top row "
+               "on the same data always looks better than it will trade.")
+    kind = "time" if params.exit_mode == "time" else params.tp_mode
+    c1, c2, c3 = st.columns([2, 2, 1])
+    if kind == "time":
+        mins = c1.multiselect("Hold times to try (minutes)", [1, 2, 3, 4, 5, 6, 7, 9, 10, 12, 15, 20, 21, 30],
+                              default=[3, 6, 9, 12, 15, 20], key="sc_opt_hold")
+        grid = [{"minutes": m, "hold": max(1, -(-m // res_min))} for m in sorted(mins)]
+    else:
+        opts = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0] if kind == "points" else [0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0]
+        dtp, dsl = ([2.0, 3.0, 4.0, 6.0], [2.0, 3.0, 4.0]) if kind == "points" else ([1.0, 1.5, 2.0], [0.75, 1.0, 1.5])
+        tps = c1.multiselect("Take-profits to try", opts, default=dtp, key=f"sc_opt_tp_{kind}")
+        sls = c2.multiselect("Stop-losses to try", opts, default=dsl, key=f"sc_opt_sl_{kind}")
+        grid = [{"tp": a_, "sl": b_} for a_ in sorted(tps) for b_ in sorted(sls)]
+    if c3.button("▶ Run optimizer", type="primary", width="stretch", disabled=not grid):
+        with st.spinner(f"Replaying {len(grid)} settings… (~1–2 s each)"):
+            table = optimize(df, params, [{k_: v for k_, v in g.items() if k_ != "minutes"} for g in grid],
+                             sess=market_session())
+            if kind == "time":
+                to_min = {g["hold"]: g["minutes"] for g in grid}
+                table.insert(0, "minutes", table["hold"].map(to_min))
+            st.session_state["sc_opt"] = (tv_symbol, tf, kind, table)
+    saved = st.session_state.get("sc_opt")
+    if saved and saved[:3] == (tv_symbol, tf, kind):
+        table = saved[3]
+        st.dataframe(table.round(2), hide_index=True, width="stretch")
+        best = table[table["reliable"] & table["consistent"]]
+        if len(best):
+            b = best.iloc[0].to_dict()
+            label = f"Use close after {int(b['minutes'])} min" if kind == "time" else f"Use TP {b['tp']:g} / SL {b['sl']:g}"
+            st.button(label, on_click=_apply_opt, args=(b,))
+            st.caption("✅ consistent = made money in both halves of the replay, which is much better evidence than "
+                       "a big total from one lucky stretch.")
+        else:
+            st.warning("No setting made money in both halves of the replay with enough trades. With these filters "
+                       "the honest answer is: don't scalp this market right now, try the 3m timeframe with the trend "
+                       "filter, or try other hours.")
