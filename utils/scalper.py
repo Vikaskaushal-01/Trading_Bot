@@ -352,3 +352,82 @@ def _blend(r: dict, ml_l, ml_s, use_ml: bool) -> dict:
     r["p_long"] = (r["knn_long"] + ml_l) / 2 if use_ml else r["knn_long"]
     r["p_short"] = (r["knn_short"] + ml_s) / 2 if use_ml else r["knn_short"]
     return r
+
+
+def _auc(won: np.ndarray, prob: np.ndarray) -> float:
+    if len(won) < 200 or len(np.unique(won)) < 2:
+        return np.nan
+    return float(roc_auc_score(won, prob))
+
+
+P_MIN, P_MAX = 0.05, 0.90  # no 3-minute trade is ever (nearly) certain — never show more extreme odds
+
+
+class _Platt:
+    """Smooth, monotone accuracy correction: logistic fit of real outcomes on the model's log-odds.
+    Unlike isotonic regression it cannot jump to 0% / 100% on a handful of unusual candles."""
+
+    def __init__(self, prob: np.ndarray, won: np.ndarray):
+        x = np.log(np.clip(prob, 0.01, 0.99) / (1 - np.clip(prob, 0.01, 0.99)))[:, None]
+        self.m = LogisticRegression(C=0.5).fit(x, won)
+        # A backwards relation (higher % → fewer wins) is treated as "no skill", never flipped into a signal.
+        self.flat = float(np.mean(won)) if self.m.coef_[0, 0] <= 0 else None
+
+    def predict(self, prob) -> np.ndarray:
+        prob = np.clip(np.asarray(prob, dtype=float), 0.01, 0.99)
+        if self.flat is not None:
+            return np.clip(np.full(len(prob), self.flat), P_MIN, P_MAX)
+        x = np.log(prob / (1 - prob))[:, None]
+        return np.clip(self.m.predict_proba(x)[:, 1], P_MIN, P_MAX)
+
+
+def _iso(prob: np.ndarray, won: np.ndarray):
+    if len(prob) < 300 or len(np.unique(won)) < 2:
+        return None
+    return _Platt(prob, won)
+
+
+def _calibrate_walk_forward(wf: pd.DataFrame, data: pd.DataFrame, p: ScalpParams) -> pd.DataFrame:
+    """Add raw_*, accuracy-corrected p_* and auc_* columns using only earlier replay rows (no peeking)."""
+    if wf.empty:
+        return wf.assign(raw_long=[], raw_short=[], auc_long=[], auc_short=[])
+    wf = wf.copy()
+    wf["raw_long"], wf["raw_short"] = wf["p_long"], wf["p_short"]
+    pos = data.index.get_indexer(wf.index)
+    won = {s_: data[f"{s_}_win"].to_numpy(float)[pos] for s_ in ("long", "short")}
+    out = {f"{c_}_{s_}": np.full(len(wf), np.nan) for c_ in ("p", "auc") for s_ in ("long", "short")}
+    for chunk in np.array_split(np.arange(len(wf)), max(1, len(wf) // 200)):
+        prior = np.where(pos <= pos[chunk[0]] - p.span)[0]
+        for s_ in ("long", "short"):
+            raw = wf[f"raw_{s_}"].to_numpy(float)
+            iso = _iso(raw[prior], won[s_][prior])
+            out[f"p_{s_}"][chunk] = iso.predict(raw[chunk]) if iso is not None else np.clip(raw[chunk], P_MIN, P_MAX)
+            out[f"auc_{s_}"][chunk] = _auc(won[s_][prior], raw[prior])
+    for k_, v in out.items():
+        wf[k_] = v
+    return wf
+
+
+def _fit_calibration(wf: pd.DataFrame, data: pd.DataFrame) -> dict:
+    """Calibrators and skill from the whole replay, used for the live candle."""
+    cal = {}
+    for s_ in ("long", "short"):
+        if wf.empty:
+            cal[s_], cal[f"auc_{s_}"] = None, np.nan
+            continue
+        raw = wf[f"raw_{s_}"].to_numpy(float)
+        won = data.loc[wf.index, f"{s_}_win"].to_numpy(float)
+        cal[s_], cal[f"auc_{s_}"] = _iso(raw, won), _auc(won, raw)
+    return cal
+
+
+def _apply_calibration(r: dict, cal: dict) -> dict:
+    r = dict(r)
+    for s_ in ("long", "short"):
+        r[f"raw_{s_}"] = r[f"p_{s_}"]
+        if cal.get(s_) is not None:
+            r[f"p_{s_}"] = float(cal[s_].predict([r[f"p_{s_}"]])[0])
+        else:
+            r[f"p_{s_}"] = float(np.clip(r[f"p_{s_}"], P_MIN, P_MAX))
+        r[f"auc_{s_}"] = cal.get(f"auc_{s_}", np.nan)
+    return r
