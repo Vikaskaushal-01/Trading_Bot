@@ -480,3 +480,65 @@ def decide(r: dict, ctx: dict, p: ScalpParams) -> tuple[str, str]:
     if p.high_conf and r[f"p_{best}"] >= need:
         return "WAIT", "Odds look good but not with high confidence yet."
     return "WAIT", f"Neither side reaches the {need * 100:.0f}% needed — no clear edge right now."
+
+
+# ------------------------------------------------------------------ heavy part: labels, models, walk-forward
+def build(raw: pd.DataFrame, p: ScalpParams, sess: MarketSession | None = None) -> dict:
+    """Labels every candle, fits the models and runs the walk-forward replay. Slow (a few seconds); cache it."""
+    sess = sess or MarketSession()
+    df = add_scalp_indicators(raw, sess)
+    feats = feature_list(df, sess)
+    data = df.join(simulate_outcomes(df, p))
+    n = len(data)
+    X = data[feats].to_numpy(dtype=float)
+    valid = ~np.isnan(X).any(axis=1)
+    if valid.sum() < 400:
+        raise ValueError("Not enough candles yet — need at least ~400 with indicators warmed up.")
+    mu, sd = X[valid].mean(0), X[valid].std(0)
+    sd[sd == 0] = 1
+    w = np.ones(len(feats))
+    for f_ in ("tod_sin", "tod_cos"):
+        w[feats.index(f_)] = 0.7  # time of day matters, but less than the price picture
+    Z = (X - mu) / sd * w
+
+    yl, ys = data["long_win"].to_numpy(float), data["short_win"].to_numpy(float)
+    pl, ps = data["long_pts"].to_numpy(float), data["short_pts"].to_numpy(float)
+    known = valid & ~np.isnan(pl) & ~np.isnan(ps)
+    pos = np.arange(n)
+
+    # ---- walk-forward: k-NN refreshed every 200 candles, ML retrained every 750, on the past only
+    eligible = np.where(known)[0]
+    start = eligible[int(len(eligible) * (1 - p.validate_frac))] if len(eligible) > 600 else n
+    wf_idx = eligible[eligible >= start]
+    parts = []
+    for block in np.array_split(wf_idx, max(1, len(wf_idx) // 1200)) if len(wf_idx) else []:
+        past = np.where(known & (pos <= block.min() - p.span))[0]
+        if len(past) < max(p.k, 300):
+            continue
+        ml_l = ml_s = None
+        if p.use_ml:
+            ml_l, ml_s = _fit_ml(X[past], yl[past]), _fit_ml(X[past], ys[past])
+        for chunk in np.array_split(block, max(1, len(block) // 200)):
+            past_c = np.where(known & (pos <= chunk.min() - p.span))[0]
+            r = _knn(Z[past_c], yl[past_c], ys[past_c], pl[past_c], ps[past_c], Z[chunk], p.k,
+                     yl[past_c].mean(), ys[past_c].mean())
+            r = _blend(r, _ml_prob(ml_l, X[chunk], yl[past].mean()), _ml_prob(ml_s, X[chunk], ys[past].mean()), p.use_ml)
+            parts.append(pd.DataFrame(r, index=data.index[chunk]))
+    wf = pd.concat(parts) if parts else pd.DataFrame(
+        columns=["knn_long", "knn_short", "lcb_long", "lcb_short", "exp_long", "exp_short", "ml_long", "ml_short",
+                 "p_long", "p_short"])
+
+    # ---- accuracy correction, also walk-forward: each chunk is calibrated (and its skill measured) only from
+    #      earlier replay candles whose outcome was already known
+    wf = _calibrate_walk_forward(wf, data, p)
+    cal = _fit_calibration(wf, data)
+
+    # ---- final models on everything known, used to score live candles
+    hist = np.where(known)[0]
+    models = (_fit_ml(X[hist], yl[hist]), _fit_ml(X[hist], ys[hist])) if p.use_ml else (None, None)
+    return {
+        "p": p, "sess": sess, "data": data, "feats": feats, "mu": mu, "sd": sd, "w": w,
+        "Zh": Z[hist], "yl": yl[hist], "ys": ys[hist], "pl": pl[hist], "ps": ps[hist],
+        "base_long": float(yl[hist].mean()), "base_short": float(ys[hist].mean()), "n_hist": int(len(hist)),
+        "models": models, "wf": wf, "cal": cal, "built_at": data.index[-1],
+    }
