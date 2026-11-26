@@ -217,3 +217,89 @@ def live_quote() -> dict:
     mid = (bid + ask) / 2 if bid and ask else q.get("lp")
     return {"lp": mid, "last": q.get("lp"), "bid": bid, "ask": ask, "spread": (ask - bid) if bid and ask else None,
             "ch": q.get("ch"), "chp": q.get("chp"), "desc": q.get("description") or tv_symbol}
+
+
+# ------------------------------------------------------------------ 1-second live ticker
+@st.fragment(run_every=1 if live_on else None)
+def ticker():
+    q = live_quote()
+    now = datetime.now(TZ)
+    secs_left = res_min * 60 - int(time.time()) % (res_min * 60)
+    if q["lp"] is None:
+        state = "⏳ connecting to TradingView…" if stream.status in ("connecting", "loading") else \
+            f"🔴 {stream.status} — {stream.error or 'retrying'}"
+        st.markdown(f'<div class="panel"><b>{now:%H:%M:%S}</b> · {state}</div>', unsafe_allow_html=True)
+        return
+
+    prev = st.session_state.get("sc_last_lp")
+    if prev != q["lp"]:
+        st.session_state["sc_dir"] = prev is None or q["lp"] >= prev
+        st.session_state["sc_last_lp"] = q["lp"]
+    up = st.session_state.get("sc_dir", True)
+    color, arrow = (GREEN, "▲") if up else (RED, "▼")
+    tick_age = time.time() - stream.last_tick if stream.last_tick else 999
+    status = ("🟢 LIVE", GREEN) if stream.healthy and tick_age < 20 else \
+        ("🟡 QUIET — no ticks for a while (market closed?)", AMBER) if stream.healthy else (f"🔴 {stream.status.upper()}", RED)
+    ticks = [p for _, p in stream.tick_history()][-240:]
+    spark = sparkline(ticks[:: max(1, len(ticks) // 120)], width=300, height=54) if len(ticks) > 5 else ""
+    ch = q["ch"] or 0.0
+    ny = datetime.now(ZoneInfo("America/New_York"))
+    ny_m = ny.hour * 60 + ny.minute
+    if ny.weekday() >= 5:
+        cash = "US market closed (weekend)"
+    elif ny_m < 570:
+        left_ = 570 - ny_m
+        cash = f"US market opens in <b>{left_ // 60}h {left_ % 60:02d}m</b>"
+    elif ny_m < 960:
+        left_ = 960 - ny_m
+        cash = f"🔔 US market <b>OPEN</b> · closes in {left_ // 60}h {left_ % 60:02d}m"
+    else:
+        cash = "US market closed · overnight session"
+    spread_txt = f"{q['spread']:.2f}" if q["spread"] is not None else "—"
+    st.markdown(
+        f'<div class="panel" style="display:flex;flex-wrap:wrap;gap:28px;align-items:center">'
+        f'<div><div class="muted">{q["desc"]} · {tv_symbol}</div>'
+        f'<div style="font:700 40px JetBrains Mono,monospace;color:{color}">{arrow} {q["lp"]:,.2f}</div>'
+        f'<div style="color:{GREEN if ch >= 0 else RED};font-weight:600">{ch:+,.2f} ({(q["chp"] or 0):+.2f}%) today</div></div>'
+        f'<div style="font-family:JetBrains Mono,monospace;line-height:1.7">'
+        f'<div><span class="muted">BID</span> <b style="color:{RED}">{(q["bid"] or 0):,.2f}</b></div>'
+        f'<div><span class="muted">ASK</span> <b style="color:{GREEN}">{(q["ask"] or 0):,.2f}</b></div>'
+        f'<div><span class="muted">SPREAD</span> <b>{spread_txt}</b></div>'
+        f'<div class="muted" style="font-size:11px">big price = mid of bid/ask</div></div>'
+        f'<div style="min-width:220px;flex:1">{spark}<div class="muted">last {len(ticks)} ticks</div></div>'
+        f'<div style="text-align:right"><div style="font:700 30px JetBrains Mono,monospace">{now:%H:%M:%S}</div>'
+        f'<div class="muted">{tz_name}</div>'
+        f'<div style="margin-top:4px">⏱ {tf} candle closes in <b>{secs_left // 60}:{secs_left % 60:02d}</b></div>'
+        f'<div style="margin-top:2px">{cash}</div>'
+        f'<div style="color:{status[1]};font-weight:700;margin-top:2px">{status[0]}</div></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # follow the trades you logged: close them at TP / SL with the live bid/ask
+    for t in journal.update(tv_symbol, q["bid"], q["ask"]):
+        st.toast(f"{t['side']} closed at {t['status']}: {t['points']:+.2f} pts ({usd(t['usd'])})",
+                 icon="✅" if t["points"] > 0 else "❌")
+    for t in [t for t in journal.load() if t["status"] == "open" and t["symbol"] == tv_symbol]:
+        px = q["bid"] if t["side"] == "BUY" else q["ask"]
+        if px is None:
+            continue
+        pts = (px - t["entry"]) if t["side"] == "BUY" else (t["entry"] - px)
+        c1, c2, c3 = st.columns([5, 1, 1])
+        c1.markdown(
+            f'<div class="panel" style="padding:10px 16px">📌 <b>{t["side"]}</b> {t["lot"]:.2f} lot @ '
+            f'{t["entry"]:,.2f} · '
+            + (f'closes in {max(0, int(t["close_at"] - time.time()))}s · ' if t.get("close_at") else "")
+            + (f'TP {t["tp"]:,.2f} · SL {t["sl"]:,.2f} · ' if t.get("tp") is not None else "")
+            + f'now {px:,.2f} → '
+            f'<b style="color:{GREEN if pts >= 0 else RED}">{pts:+.2f} pts ({usd(pts * t["lot"] * t["ppv"])})</b></div>',
+            unsafe_allow_html=True)
+        if c2.button("Close", key=f"close_{t['id']}", width="stretch", help="Mark as closed at the current price"):
+            journal.close_now(t["id"], q["bid"], q["ask"])
+            st.rerun(scope="fragment")
+        if c3.button("Remove", key=f"del_{t['id']}", width="stretch", help="Delete — you didn't really take it"):
+            journal.delete(t["id"])
+            st.rerun(scope="fragment")
+
+
+ticker()
