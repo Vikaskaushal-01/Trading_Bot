@@ -311,3 +311,44 @@ def simulate_outcomes(df: pd.DataFrame, p: ScalpParams) -> pd.DataFrame:
         pts[~known], exit_i[~known] = np.nan, -1
         out[f"{side}_pts"], out[f"{side}_win"], out[f"{side}_exit"] = pts, win & known, exit_i
     return pd.DataFrame(out, index=df.index)
+
+
+# ------------------------------------------------------------------ estimators
+def _wilson_low(p: np.ndarray, n: int, z: float = 1.2816) -> np.ndarray:
+    """One-sided 90% lower confidence bound of a success rate."""
+    denom = 1 + z * z / n
+    centre = p + z * z / (2 * n)
+    return (centre - z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / denom
+
+
+def _knn(Zh, yl, ys, pl, ps, Zq, k, prior_l, prior_s, prior_w=20) -> dict:
+    k = min(k, len(Zh))
+    d = (Zq ** 2).sum(1)[:, None] + (Zh ** 2).sum(1)[None, :] - 2 * Zq @ Zh.T
+    nn = np.argpartition(d, k - 1, axis=1)[:, :k]
+    raw_l, raw_s = yl[nn].mean(1), ys[nn].mean(1)
+    return {
+        "knn_long": (raw_l * k + prior_w * prior_l) / (k + prior_w),
+        "knn_short": (raw_s * k + prior_w * prior_s) / (k + prior_w),
+        "lcb_long": _wilson_low(raw_l, k), "lcb_short": _wilson_low(raw_s, k),
+        "exp_long": pl[nn].mean(1), "exp_short": ps[nn].mean(1),
+    }
+
+
+def _fit_ml(X, y):
+    if len(np.unique(y)) < 2 or len(y) < 300:
+        return None
+    m = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.05, max_leaf_nodes=15, min_samples_leaf=60,
+                                       l2_regularization=1.0, random_state=0)
+    return m.fit(X, y)
+
+
+def _ml_prob(model, X, fallback: float) -> np.ndarray:
+    return model.predict_proba(X)[:, 1] if model is not None else np.full(len(X), fallback)
+
+
+def _blend(r: dict, ml_l, ml_s, use_ml: bool) -> dict:
+    r = dict(r)
+    r["ml_long"], r["ml_short"] = ml_l, ml_s
+    r["p_long"] = (r["knn_long"] + ml_l) / 2 if use_ml else r["knn_long"]
+    r["p_short"] = (r["knn_short"] + ml_s) / 2 if use_ml else r["knn_short"]
+    return r
