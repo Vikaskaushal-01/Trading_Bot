@@ -99,3 +99,52 @@ def _tv_bars(symbol: str, resolution: str, n_bars: int, timeout: float = 15.0) -
     df.index = pd.DatetimeIndex(pd.to_datetime(df.pop("t"), unit="s", utc=True)).tz_convert(None)  # naive UTC
     df.index.name = None
     return df.astype(float), info
+
+
+def _yf_bars(ticker: str, resolution: str) -> pd.DataFrame:
+    """Intraday bars from Yahoo Finance (1m data resampled for 3m)."""
+    minutes = int(resolution)
+    if minutes in (1, 3):
+        df = get_history(ticker, period="7d", interval="1m")
+    else:
+        df = get_history(ticker, period="30d", interval=f"{minutes}m")
+    if df.empty or minutes != 3:
+        return df
+    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    return df.resample("3min", label="left", closed="left").agg(agg).dropna(subset=["Close"])
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _tv_history(tv_symbol: str, resolution: str, n_bars: int) -> tuple[pd.DataFrame, dict]:
+    """Long history (slow, ~5-10 s) — refreshed every 15 min; recent candles are merged on top."""
+    return _tv_bars(tv_symbol, resolution, n_bars)
+
+
+@st.cache_data(ttl=90, max_entries=20, show_spinner=False)
+def get_intraday(tv_symbol: str, resolution: str = "3", n_bars: int = 5000, yf_ticker: str = "",
+                 minute: int = 0) -> dict:
+    """Candles (naive-UTC index) plus where they came from. `minute` is a cache key: pass the current minute
+    number so a fresh fetch happens once per minute, right after each candle closes."""
+    started = time.time()
+    try:
+        hist, info = _tv_history(tv_symbol, resolution, n_bars)
+        try:
+            recent, _ = _tv_bars(tv_symbol, resolution, 300)
+        except Exception:  # one quick retry before giving up on live data
+            time.sleep(1)
+            recent, _ = _tv_bars(tv_symbol, resolution, 300)
+        df = pd.concat([hist[hist.index < recent.index[0]], recent]).tail(n_bars)
+        return {
+            "df": df, "source": "TradingView (live websocket)", "live": True,
+            "name": info.get("description") or info.get("name") or tv_symbol,
+            "has_volume": bool((df["Volume"] > 0).any()), "fetched_at": time.time(),
+            "latency": time.time() - started, "error": "",
+        }
+    except Exception as exc:  # network down, symbol unknown, protocol change …
+        error = str(exc)[:200]
+    df = _yf_bars(yf_ticker, resolution) if yf_ticker else pd.DataFrame(columns=OHLCV)
+    return {
+        "df": df, "source": f"Yahoo Finance fallback ({yf_ticker})" if yf_ticker else "none", "live": False,
+        "name": yf_ticker or tv_symbol, "has_volume": bool(len(df) and (df["Volume"] > 0).any()),
+        "fetched_at": time.time(), "latency": time.time() - started, "error": error,
+    }
