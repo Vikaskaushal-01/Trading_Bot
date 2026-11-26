@@ -234,3 +234,80 @@ def add_scalp_indicators(df: pd.DataFrame, sess: MarketSession | None = None) ->
     f["tod_sin"] = np.sin(2 * np.pi * loc_min / 1440)
     f["tod_cos"] = np.cos(2 * np.pi * loc_min / 1440)
     return df.join(f.clip(-10, 10))
+
+
+def feature_list(df: pd.DataFrame, sess: MarketSession) -> list[str]:
+    feats = [f for f in FEATURES if f in df.columns]
+    if not (df["Volume"] > 0).any():
+        feats.remove("vol_z")
+    if not sess.us_index:
+        feats = [f for f in feats if f not in US_ONLY]
+    return feats
+
+
+def trade_levels(data: pd.DataFrame, p: ScalpParams) -> tuple[np.ndarray, np.ndarray]:
+    """TP and SL distance in price points for every row (NaN in time-exit mode)."""
+    if p.exit_mode == "time":
+        return np.full(len(data), np.nan), np.full(len(data), np.nan)
+    if p.tp_mode == "atr":
+        atr = data["ATR"].to_numpy(float)
+        return p.tp * atr, p.sl * atr
+    n = len(data)
+    return np.full(n, p.tp), np.full(n, p.sl)
+
+
+def simulate_outcomes(df: pd.DataFrame, p: ScalpParams) -> pd.DataFrame:
+    """Spread-adjusted result of a long and a short opened at every close.
+
+    Candle prices are treated as bid. A long buys at ask (close + spread) and exits at bid; a short sells at
+    bid and buys back at ask (bid + spread). If TP and SL fall inside the same candle we assume the stop
+    was hit first (conservative). Positions still open after `horizon` candles close at market.
+    """
+    c, h, l = df["Close"].to_numpy(), df["High"].to_numpy(), df["Low"].to_numpy()
+    n = len(df)
+    out = {}
+    if p.exit_mode == "time":  # buy/sell at this close, close exactly `hold` candles later at market
+        idx = np.arange(n) + p.hold
+        ok = idx < n
+        later = np.full(n, np.nan)
+        later[ok] = c[idx[ok]]
+        long_pts = later - (c + p.spread)        # buy at ask, sell back at bid
+        short_pts = c - (later + p.spread)       # sell at bid, buy back at ask
+        exit_i = np.where(ok, idx, -1)
+        for side, pts in (("long", long_pts), ("short", short_pts)):
+            out[f"{side}_pts"], out[f"{side}_win"], out[f"{side}_exit"] = pts, ok & (pts > 0), exit_i
+        return pd.DataFrame(out, index=df.index)
+    tp, sl = trade_levels(df, p)
+    for side in ("long", "short"):
+        pts = np.full(n, np.nan)
+        win = np.zeros(n, dtype=bool)
+        exit_i = np.full(n, -1)
+        open_ = ~np.isnan(tp)
+        if side == "long":
+            entry = c + p.spread
+            tp_lvl, sl_lvl = entry + tp, entry - sl
+        else:
+            entry = c
+            tp_lvl, sl_lvl = entry - tp, entry + sl
+        for step in range(1, p.horizon + 1):
+            idx = np.arange(n) + step
+            ok = idx < n
+            hi, lo, cl = (np.full(n, np.nan) for _ in range(3))
+            hi[ok], lo[ok], cl[ok] = h[idx[ok]], l[idx[ok]], c[idx[ok]]
+            if side == "long":
+                hit_sl = open_ & ok & (lo <= sl_lvl)
+                hit_tp = open_ & ok & ~hit_sl & (hi >= tp_lvl)
+            else:
+                hit_sl = open_ & ok & (hi + p.spread >= sl_lvl)
+                hit_tp = open_ & ok & ~hit_sl & (lo + p.spread <= tp_lvl)
+            pts[hit_sl], exit_i[hit_sl] = -sl[hit_sl], idx[hit_sl]
+            pts[hit_tp], win[hit_tp], exit_i[hit_tp] = tp[hit_tp], True, idx[hit_tp]
+            open_ &= ~(hit_sl | hit_tp)
+            if step == p.horizon:  # time exit at market
+                last = open_ & ok
+                pts[last] = (cl[last] - entry[last]) if side == "long" else (entry[last] - cl[last] - p.spread)
+                exit_i[last] = idx[last]
+        known = np.arange(n) + p.horizon < n
+        pts[~known], exit_i[~known] = np.nan, -1
+        out[f"{side}_pts"], out[f"{side}_win"], out[f"{side}_exit"] = pts, win & known, exit_i
+    return pd.DataFrame(out, index=df.index)
