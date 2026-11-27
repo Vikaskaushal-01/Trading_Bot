@@ -473,8 +473,10 @@ def decide(r: dict, ctx: dict, p: ScalpParams) -> tuple[str, str]:
     need = p.breakeven + p.min_edge
 
     def skilled(side):
+        if not p.require_skill:
+            return True
         auc = r.get(f"auc_{side}", np.nan)
-        return not p.require_skill or (auc is not None and not np.isnan(auc) and auc >= p.min_auc)
+        return not (auc is None or np.isnan(auc) or auc < p.min_auc)
 
     def ok(side):
         confident = r[f"lcb_{side}"] >= p.breakeven or not p.high_conf
