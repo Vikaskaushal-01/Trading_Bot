@@ -45,6 +45,8 @@ machine-learning signals, technical analysis, strategy backtesting and an AI ass
 ### Live Scalper: what the trade analysis found (Nov 2026)
 Re-checked on fresh TradingView data (SPREADEX:SPX and FOREXCOM:SPXUSD, 1m and 3m, Nov 8–27 2026):
 
+* The saved defaults (3m, 15-minute hold, trend filter) **did not hold up out of sample**: walk-forward
+  ROC-AUC 0.48 BUY / 0.49 SELL. Their +104 pts replay came from 13 SELLs on one day.
 ### Currencies
 Cash is held in USD. Non-USD assets (e.g. `.NS` stocks in INR) are converted at the live FX rate.
 
