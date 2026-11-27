@@ -410,7 +410,7 @@ def _calibrate_walk_forward(wf: pd.DataFrame, data: pd.DataFrame, p: ScalpParams
     wf["raw_long"], wf["raw_short"] = wf["p_long"], wf["p_short"]
     pos = data.index.get_indexer(wf.index)
     won = {s_: data[f"{s_}_win"].to_numpy(float)[pos] for s_ in ("long", "short")}
-    out = {f"{c_}_{s_}": np.full(len(wf), np.nan) for c_ in ("p", "auc") for s_ in ("long", "short")}
+    out = {f"{c_}_{s_}": np.full(len(wf), np.nan) for c_ in ("p", "auc", "auc_lcb") for s_ in ("long", "short")}
     for chunk in np.array_split(np.arange(len(wf)), max(1, len(wf) // 200)):
         prior = np.where(pos <= pos[chunk[0]] - p.span)[0]
         for s_ in ("long", "short"):
