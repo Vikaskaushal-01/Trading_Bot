@@ -22,3 +22,8 @@ def test_auc_lcb_tightens_with_more_data():
 
 def test_auc_lcb_widens_when_trades_overlap():
     assert _auc_lcb(WON, 0.55, 5) < _auc_lcb(WON, 0.55, 1)
+
+
+def test_small_edge_on_overlapping_trades_is_not_significant():
+    # 0.53 on 2,000 candles with 5-candle holds is what chance produces - it must not count as skill
+    assert _auc_lcb(WON, 0.53, 5) < 0.5
