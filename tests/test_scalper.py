@@ -71,3 +71,8 @@ def test_time_exit_pays_the_spread_on_both_sides():
     out = simulate_outcomes(_candles([100, 100, 100, 100]), ScalpParams(exit_mode="time", hold=1, spread=0.5))
     assert out["long_pts"].iloc[0] == -0.5 and out["short_pts"].iloc[0] == -0.5
     assert not out["long_win"].iloc[0] and not out["short_win"].iloc[0]
+
+
+def test_time_exit_long_profit_after_spread():
+    out = simulate_outcomes(_candles([100, 102, 102]), ScalpParams(exit_mode="time", hold=1, spread=0.5))
+    assert out["long_pts"].iloc[0] == 1.5 and out["long_win"].iloc[0]
