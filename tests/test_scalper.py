@@ -39,3 +39,8 @@ def test_small_edge_on_overlapping_trades_is_not_significant():
 
 def test_decide_blocks_auc_below_minimum():
     assert decide(_row(auc=0.51, lcb=0.40), CTX, ScalpParams(exit_mode="time"))[0] == "WAIT"
+
+
+def test_decide_blocks_auc_that_is_not_significant():
+    signal, why = decide(_row(auc=0.56, lcb=0.48), CTX, ScalpParams(exit_mode="time"))
+    assert signal == "WAIT" and "proved accurate" in why
