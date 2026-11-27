@@ -82,3 +82,7 @@ def test_stop_counts_first_when_tp_and_sl_share_a_candle():
     c = _candles([100, 100, 100], highs=[100, 120, 100], lows=[100, 80, 100])
     out = simulate_outcomes(c, ScalpParams(tp=4, sl=3, spread=0.0, horizon=1))
     assert out["long_pts"].iloc[0] == -3 and not out["long_win"].iloc[0]
+
+
+def test_wilson_lower_bound_is_below_the_rate():
+    assert (_wilson_low(np.array([0.6]), 150) < 0.6).all()
