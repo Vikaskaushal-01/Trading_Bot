@@ -76,3 +76,9 @@ def test_time_exit_pays_the_spread_on_both_sides():
 def test_time_exit_long_profit_after_spread():
     out = simulate_outcomes(_candles([100, 102, 102]), ScalpParams(exit_mode="time", hold=1, spread=0.5))
     assert out["long_pts"].iloc[0] == 1.5 and out["long_win"].iloc[0]
+
+
+def test_stop_counts_first_when_tp_and_sl_share_a_candle():
+    c = _candles([100, 100, 100], highs=[100, 120, 100], lows=[100, 80, 100])
+    out = simulate_outcomes(c, ScalpParams(tp=4, sl=3, spread=0.0, horizon=1))
+    assert out["long_pts"].iloc[0] == -3 and not out["long_win"].iloc[0]
