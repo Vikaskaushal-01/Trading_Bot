@@ -5,6 +5,7 @@ percentages still separate winners from losers. Run it every week or two: settin
 often stop working.
 
     python scripts/scalper_check.py                 # your saved settings
+    python scripts/scalper_check.py --features      # + does any single indicator predict the next move?
 """
 
 from __future__ import annotations
@@ -19,9 +20,10 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from utils.scalper import MarketSession, ScalpParams, analyze  # noqa: E402
+from utils.scalper import FEATURES, MarketSession, ScalpParams, add_scalp_indicators, analyze  # noqa: E402
 from utils.tv_feed import PRESETS, TIMEFRAMES, _tv_bars  # noqa: E402
 
 SETTINGS = ROOT / "data" / "scalper_settings.json"
@@ -69,6 +71,20 @@ def calibration(res: dict):
         print(table.round(1).to_string(index=False))
 
 
+def feature_check(df: pd.DataFrame, sess: MarketSession, hold: int):
+    """Rank correlation of each indicator with the move `hold` candles later, in each half of the data."""
+    d = add_scalp_indicators(df, sess)
+    d["fwd"] = d["Close"].shift(-hold) - d["Close"]
+    half = len(d) // 2
+    rows = []
+    for f in (f for f in FEATURES if f in d):
+        ic = [d.iloc[a:b][[f, "fwd"]].dropna().corr("spearman").iat[0, 1] for a, b in ((0, half), (half, None))]
+        rows.append({"feature": f, "IC 1st half": ic[0], "IC 2nd half": ic[1],
+                     "stable": np.sign(ic[0]) == np.sign(ic[1]) and min(abs(ic[0]), abs(ic[1])) >= 0.05})
+    t = pd.DataFrame(rows).sort_values("IC 2nd half", key=abs, ascending=False)
+    print(f"\nIndicator vs next {hold}-candle move (|IC| < 0.05 is noise; 'stable' = same sign and >= 0.05 twice)")
+    print(t.round(3).to_string(index=False))
+
 
 
 def main():
@@ -77,6 +93,7 @@ def main():
     ap.add_argument("--symbol", default=PRESETS.get(s.get("sc_preset"), ("SPREADEX:SPX",))[0])
     ap.add_argument("--tf", default=s.get("sc_tf", "3m"), choices=list(TIMEFRAMES))
     ap.add_argument("--bars", type=int, default=5000)
+    ap.add_argument("--features", action="store_true", help="test each indicator on its own")
     a = ap.parse_args()
 
     res_min = int(TIMEFRAMES[a.tf])
@@ -89,6 +106,8 @@ def main():
     res = analyze(df, p, sess=sess)
     report("Your saved settings", res)
     calibration(res)
+    if a.features:
+        feature_check(df, sess, p.span)
 
 
 if __name__ == "__main__":
