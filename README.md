@@ -42,6 +42,9 @@ machine-learning signals, technical analysis, strategy backtesting and an AI ass
 > (out-of-sample ROC-AUC usually 0.48–0.55). The app measures and shows this instead of hiding it, and leans on
 > risk management (stops, sizing) where prediction has no edge.
 
+### Live Scalper: what the trade analysis found (Nov 2026)
+Re-checked on fresh TradingView data (SPREADEX:SPX and FOREXCOM:SPXUSD, 1m and 3m, Nov 8–27 2026):
+
 ### Currencies
 Cash is held in USD. Non-USD assets (e.g. `.NS` stocks in INR) are converted at the live FX rate.
 
