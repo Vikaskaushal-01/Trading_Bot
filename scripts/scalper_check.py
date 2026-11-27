@@ -6,6 +6,7 @@ often stop working.
 
     python scripts/scalper_check.py                 # your saved settings
     python scripts/scalper_check.py --features      # + does any single indicator predict the next move?
+    python scripts/scalper_check.py --sweep         # + 16 common settings, with and without the trend filter
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import argparse
 import json
 import sys
 import warnings
+from dataclasses import replace
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -86,6 +88,21 @@ def feature_check(df: pd.DataFrame, sess: MarketSession, hold: int):
     print(t.round(3).to_string(index=False))
 
 
+def sweep(df: pd.DataFrame, sess: MarketSession, base: ScalpParams, res_min: int):
+    grid = [{"exit_mode": "time", "hold": max(1, -(-m // res_min)), "_name": f"time {m}m"} for m in (3, 6, 9, 15, 30)]
+    grid += [{"exit_mode": "tp_sl", "tp": tp, "sl": sl, "_name": f"TP {tp} / SL {sl}"} for tp, sl in ((4, 3), (8, 6), (6, 6))]
+    rows = []
+    for g in grid:
+        g = dict(g)
+        name = g.pop("_name")
+        for trend in (False, True):
+            r = analyze(df, replace(base, trend_filter=trend, **g), sess=sess)
+            rows.append({"setting": name, "trend": trend, "AUC buy": r["accuracy"]["auc_long"],
+                         "AUC sell": r["accuracy"]["auc_short"], "trades": r["stats"]["trades"],
+                         "net pts": r["stats"].get("net_points", 0.0)})
+    print("\nCommon settings on the same data")
+    print(pd.DataFrame(rows).round(3).to_string(index=False))
+
 
 def main():
     s = load_settings()
@@ -94,6 +111,7 @@ def main():
     ap.add_argument("--tf", default=s.get("sc_tf", "3m"), choices=list(TIMEFRAMES))
     ap.add_argument("--bars", type=int, default=5000)
     ap.add_argument("--features", action="store_true", help="test each indicator on its own")
+    ap.add_argument("--sweep", action="store_true", help="also try 16 common settings (a few minutes)")
     a = ap.parse_args()
 
     res_min = int(TIMEFRAMES[a.tf])
@@ -108,6 +126,8 @@ def main():
     calibration(res)
     if a.features:
         feature_check(df, sess, p.span)
+    if a.sweep:
+        sweep(df, sess, p, res_min)
 
 
 if __name__ == "__main__":
