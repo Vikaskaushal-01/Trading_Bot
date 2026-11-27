@@ -417,7 +417,9 @@ def _calibrate_walk_forward(wf: pd.DataFrame, data: pd.DataFrame, p: ScalpParams
             raw = wf[f"raw_{s_}"].to_numpy(float)
             iso = _iso(raw[prior], won[s_][prior])
             out[f"p_{s_}"][chunk] = iso.predict(raw[chunk]) if iso is not None else np.clip(raw[chunk], P_MIN, P_MAX)
-            out[f"auc_{s_}"][chunk] = _auc(won[s_][prior], raw[prior])
+            a = _auc(won[s_][prior], raw[prior])
+            out[f"auc_{s_}"][chunk] = a
+            out[f"auc_lcb_{s_}"][chunk] = _auc_lcb(won[s_][prior], a, p.span)
     for k_, v in out.items():
         wf[k_] = v
     return wf
