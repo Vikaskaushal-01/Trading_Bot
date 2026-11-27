@@ -49,6 +49,9 @@ Re-checked on fresh TradingView data (SPREADEX:SPX and FOREXCOM:SPXUSD, 1m and 3
   ROC-AUC 0.48 BUY / 0.49 SELL. Their +104 pts replay came from 13 SELLs on one day.
 * Across 64 settings, no single indicator had a stable link to the next 15 minutes (rank correlation ≤ 0.08,
   about half flipping sign between the two halves of the data), and no hour of the day had a significant drift.
+* The old skill gate (AUC ≥ 0.53) let short lucky stretches count as skill: 504 replay trades, 24 settings
+  losing vs 5 winning, −467 pts in total. The gate now also needs the AUC's 95% lower bound — counting
+  overlapping trades once — to be above 0.50. Same data: 26 trades, −14 pts.
 ### Currencies
 Cash is held in USD. Non-USD assets (e.g. `.NS` stocks in INR) are converted at the live FX rate.
 
