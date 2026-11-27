@@ -53,3 +53,7 @@ def test_decide_allows_significant_auc():
 def test_decide_ignores_skill_when_gate_is_off():
     p = ScalpParams(exit_mode="time", require_skill=False)
     assert decide(_row(auc=0.45, lcb=0.30), CTX, p)[0] == "BUY"
+
+
+def test_decide_respects_trading_hours():
+    assert decide(_row(), {**CTX, "in_session": False}, ScalpParams(exit_mode="time"))[0] == "WAIT"
