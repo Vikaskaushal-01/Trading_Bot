@@ -52,6 +52,10 @@ Re-checked on fresh TradingView data (SPREADEX:SPX and FOREXCOM:SPXUSD, 1m and 3
 * The old skill gate (AUC ≥ 0.53) let short lucky stretches count as skill: 504 replay trades, 24 settings
   losing vs 5 winning, −467 pts in total. The gate now also needs the AUC's 95% lower bound — counting
   overlapping trades once — to be above 0.50. Same data: 26 trades, −14 pts.
+
+So the scalper will mostly say **WAIT**. That is the correct answer when there is no measurable edge after the
+spread; treat any signal as weak evidence and keep the daily loss limit on.
+
 ### Currencies
 Cash is held in USD. Non-USD assets (e.g. `.NS` stocks in INR) are converted at the live FX rate.
 
