@@ -475,8 +475,11 @@ def decide(r: dict, ctx: dict, p: ScalpParams) -> tuple[str, str]:
     def skilled(side):
         if not p.require_skill:
             return True
-        auc = r.get(f"auc_{side}", np.nan)
-        return not (auc is None or np.isnan(auc) or auc < p.min_auc)
+        auc, lcb = r.get(f"auc_{side}", np.nan), r.get(f"auc_lcb_{side}", np.nan)
+        if auc is None or np.isnan(auc) or auc < p.min_auc:
+            return False
+        # proved accurate = AUC high enough AND statistically above a coin flip (when the bound is known)
+        return lcb is None or np.isnan(lcb) or lcb > 0.5
 
     def ok(side):
         confident = r[f"lcb_{side}"] >= p.breakeven or not p.high_conf
