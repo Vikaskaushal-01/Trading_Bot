@@ -18,3 +18,7 @@ def test_auc_lcb_is_below_the_auc():
 
 def test_auc_lcb_tightens_with_more_data():
     assert _auc_lcb(WON, 0.58, 5) > _auc_lcb(WON[:300], 0.58, 5)
+
+
+def test_auc_lcb_widens_when_trades_overlap():
+    assert _auc_lcb(WON, 0.55, 5) < _auc_lcb(WON, 0.55, 1)
