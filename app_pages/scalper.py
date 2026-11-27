@@ -24,9 +24,11 @@ TIMEZONES = ["Asia/Kolkata", "America/New_York", "Europe/London", "Asia/Dubai", 
 CADENCES = {"Every candle close (most reliable)": None, "Every 30 seconds": 30, "Every 15 seconds": 15}
 SETTINGS_FILE = DATA_DIR / "scalper_settings.json"
 DEFAULTS = {
-    # Tuned on ~17 days of SPREADEX:SPX (Nov 2026), choosing on the first half of the walk-forward replay and
-    # checking on the unseen second half: 3m candles, 15-minute hold, trend filter, 2% edge was the only family
-    # that made money in both halves. 1m direction showed no skill (ROC-AUC ≈ 0.50) at any hold.
+    # Tuned on ~17 days of SPREADEX:SPX (to mid-Nov 2026): 3m candles, 15-minute hold, trend filter, 2% edge was
+    # the only family that made money in both halves of that replay. Re-checked on fresh data (Nov 8–27 2026) it
+    # did NOT hold up: walk-forward ROC-AUC 0.48 / 0.49 (coin flip = 0.50) and its +104 pts came from 13 SELLs on
+    # a single day. Across 64 settings (SPREADEX + FOREXCOM, 1m + 3m) no setting showed reliable direction skill,
+    # so the skill gate now also requires the AUC to be statistically above 0.50 — expect mostly WAIT.
     "sc_preset": next(iter(PRESETS)), "sc_custom": "FOREXCOM:SPXUSD", "sc_tf": "3m", "sc_tz": "Asia/Kolkata",
     "sc_cadence": next(iter(CADENCES)), "sc_live": True, "sc_sound": True,
     "sc_exit": "Close after X minutes", "sc_hold_min": 15, "sc_mode": "Points", "sc_tp": 8.0, "sc_sl": 6.0, "sc_tp_atr": 1.0, "sc_sl_atr": 1.5,
