@@ -448,6 +448,7 @@ def _apply_calibration(r: dict, cal: dict) -> dict:
         else:
             r[f"p_{s_}"] = float(np.clip(r[f"p_{s_}"], P_MIN, P_MAX))
         r[f"auc_{s_}"] = cal.get(f"auc_{s_}", np.nan)
+        r[f"auc_lcb_{s_}"] = cal.get(f"auc_lcb_{s_}", np.nan)
     return r
 
 
