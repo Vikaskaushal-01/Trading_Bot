@@ -360,6 +360,21 @@ def _auc(won: np.ndarray, prob: np.ndarray) -> float:
     return float(roc_auc_score(won, prob))
 
 
+def _auc_lcb(won: np.ndarray, auc: float, span: int, z: float = 1.645) -> float:
+    """One-sided 95% lower bound of a ROC-AUC (Hanley & McNeil), counting overlapping trades once.
+
+    Neighbouring candles share most of their future path (a 5-candle hold overlaps the next 4 trades), so
+    n candles carry only about n / span independent outcomes. Without this an AUC of 0.53-0.55 on a few hundred
+    candles looks like skill but is usually chance - on SPX 3m it let whole days of losing signals through."""
+    if auc is None or np.isnan(auc):
+        return np.nan
+    f = max(1, int(span))
+    n1, n0 = max(1.0, won.sum() / f), max(1.0, (len(won) - won.sum()) / f)
+    q1, q2 = auc / (2 - auc), 2 * auc * auc / (1 + auc)
+    var = (auc * (1 - auc) + (n1 - 1) * (q1 - auc ** 2) + (n0 - 1) * (q2 - auc ** 2)) / (n1 * n0)
+    return float(auc - z * np.sqrt(max(var, 0.0)))
+
+
 P_MIN, P_MAX = 0.05, 0.90  # no 3-minute trade is ever (nearly) certain — never show more extreme odds
 
 
