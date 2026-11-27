@@ -80,6 +80,24 @@ Run:
 streamlit run app.py
 ```
 
+### Check the scalper on fresh data
+
+Settings that worked last week often stop working. Every week or two, re-run the out-of-sample check with your
+saved scalper settings:
+
+```bash
+python scripts/scalper_check.py              # replay + "does a higher % really win more often?"
+python scripts/scalper_check.py --features   # does any single indicator predict the next move?
+python scripts/scalper_check.py --sweep      # 16 common settings on the same data (a few minutes)
+```
+
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests
+```
+
 ## Project structure
 
 ```
@@ -101,6 +119,8 @@ utils/
   trading_view.py      shared trading terminal UI
   chat_view.py         reusable chat panel
   ui.py                CSS theme, components, Plotly charts
+scripts/scalper_check.py  out-of-sample health check for the Live Scalper
+tests/                 skill gate and trade-simulation tests
 data/                  account files (trading_memory.json, demo_memory.json), chat history
 ```
 
