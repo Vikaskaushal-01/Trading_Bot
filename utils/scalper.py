@@ -430,11 +430,12 @@ def _fit_calibration(wf: pd.DataFrame, data: pd.DataFrame, p: ScalpParams) -> di
     cal = {}
     for s_ in ("long", "short"):
         if wf.empty:
-            cal[s_], cal[f"auc_{s_}"] = None, np.nan
+            cal[s_], cal[f"auc_{s_}"], cal[f"auc_lcb_{s_}"] = None, np.nan, np.nan
             continue
         raw = wf[f"raw_{s_}"].to_numpy(float)
         won = data.loc[wf.index, f"{s_}_win"].to_numpy(float)
         cal[s_], cal[f"auc_{s_}"] = _iso(raw, won), _auc(won, raw)
+        cal[f"auc_lcb_{s_}"] = _auc_lcb(won, cal[f"auc_{s_}"], p.span)
     return cal
 
 
