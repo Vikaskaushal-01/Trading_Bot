@@ -16,6 +16,14 @@ def _row(p_long=0.70, auc=0.60, lcb=0.55):
             "exp_long": 1.0, "exp_short": -1.0, "auc_long": auc, "auc_short": 0.50,
             "auc_lcb_long": lcb, "auc_lcb_short": 0.40}
 
+
+def _candles(closes, highs=None, lows=None):
+    closes = np.asarray(closes, dtype=float)
+    idx = pd.date_range("2026-11-02 14:30", periods=len(closes), freq="3min")
+    return pd.DataFrame({"Open": closes, "High": highs if highs is not None else closes,
+                         "Low": lows if lows is not None else closes, "Close": closes}, index=idx)
+
+
 def test_auc_lcb_passes_nan_through():
     assert np.isnan(_auc_lcb(WON, float("nan"), 5))
 
@@ -57,3 +65,9 @@ def test_decide_ignores_skill_when_gate_is_off():
 
 def test_decide_respects_trading_hours():
     assert decide(_row(), {**CTX, "in_session": False}, ScalpParams(exit_mode="time"))[0] == "WAIT"
+
+
+def test_time_exit_pays_the_spread_on_both_sides():
+    out = simulate_outcomes(_candles([100, 100, 100, 100]), ScalpParams(exit_mode="time", hold=1, spread=0.5))
+    assert out["long_pts"].iloc[0] == -0.5 and out["short_pts"].iloc[0] == -0.5
+    assert not out["long_win"].iloc[0] and not out["short_win"].iloc[0]
