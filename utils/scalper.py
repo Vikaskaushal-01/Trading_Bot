@@ -425,7 +425,7 @@ def _calibrate_walk_forward(wf: pd.DataFrame, data: pd.DataFrame, p: ScalpParams
     return wf
 
 
-def _fit_calibration(wf: pd.DataFrame, data: pd.DataFrame) -> dict:
+def _fit_calibration(wf: pd.DataFrame, data: pd.DataFrame, p: ScalpParams) -> dict:
     """Calibrators and skill from the whole replay, used for the live candle."""
     cal = {}
     for s_ in ("long", "short"):
@@ -548,7 +548,7 @@ def build(raw: pd.DataFrame, p: ScalpParams, sess: MarketSession | None = None) 
     # ---- accuracy correction, also walk-forward: each chunk is calibrated (and its skill measured) only from
     #      earlier replay candles whose outcome was already known
     wf = _calibrate_walk_forward(wf, data, p)
-    cal = _fit_calibration(wf, data)
+    cal = _fit_calibration(wf, data, p)
 
     # ---- final models on everything known, used to score live candles
     hist = np.where(known)[0]
