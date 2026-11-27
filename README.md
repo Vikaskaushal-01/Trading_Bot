@@ -47,6 +47,8 @@ Re-checked on fresh TradingView data (SPREADEX:SPX and FOREXCOM:SPXUSD, 1m and 3
 
 * The saved defaults (3m, 15-minute hold, trend filter) **did not hold up out of sample**: walk-forward
   ROC-AUC 0.48 BUY / 0.49 SELL. Their +104 pts replay came from 13 SELLs on one day.
+* Across 64 settings, no single indicator had a stable link to the next 15 minutes (rank correlation ≤ 0.08,
+  about half flipping sign between the two halves of the data), and no hour of the day had a significant drift.
 ### Currencies
 Cash is held in USD. Non-USD assets (e.g. `.NS` stocks in INR) are converted at the live FX rate.
 
