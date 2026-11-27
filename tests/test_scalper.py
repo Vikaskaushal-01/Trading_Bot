@@ -48,3 +48,8 @@ def test_decide_blocks_auc_that_is_not_significant():
 
 def test_decide_allows_significant_auc():
     assert decide(_row(auc=0.60, lcb=0.55), CTX, ScalpParams(exit_mode="time"))[0] == "BUY"
+
+
+def test_decide_ignores_skill_when_gate_is_off():
+    p = ScalpParams(exit_mode="time", require_skill=False)
+    assert decide(_row(auc=0.45, lcb=0.30), CTX, p)[0] == "BUY"
